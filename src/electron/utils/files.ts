@@ -319,12 +319,12 @@ export const dataFolderNames = {
     cloud: "Cloud"
 }
 
-// Documents/FreeShow
+// Documents/HamroShow
 export function getDefaultDataFolderRoot() {
     const documentsPath = getMediaFolderPath("documents")
     if (!documentsPath) return appDataPath
 
-    const appFolderName = "FreeShow"
+    const appFolderName = "HamroShow"
     const fullPath = path.join(documentsPath, appFolderName)
 
     try {
@@ -1473,7 +1473,7 @@ export function getShowsFromIds(showIds: string[], projectItems?: any[]) {
 
 // some users might have got themselves in a situation they can't get out of
 // example: enables "kiosk" mode on mac might have resulted in a black screen, and they can't find the app data location to revert it!
-// how: Place any file in your Documents/FreeShow folder that has the FIXES key in it's name (e.g. DISABLE_KIOSK_MODE), when you now start your app the fix will be triggered!
+// how: Place any file in your Documents/HamroShow folder that has the FIXES key in it's name (e.g. DISABLE_KIOSK_MODE), when you now start your app the fix will be triggered!
 const FIXES = {
     DISABLE_KIOSK_MODE: () => {
         // wait to ensure output settings have loaded in the app!

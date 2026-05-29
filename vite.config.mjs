@@ -28,7 +28,7 @@ export default defineConfig({
         ? {
               lib: {
                   entry: "src/frontend/main.ts",
-                  name: "freeshow",
+                  name: "hamroshow",
                   formats: ["iife"],
                   fileName: () => "bundle.js"
               },

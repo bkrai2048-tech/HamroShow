@@ -103,7 +103,7 @@ async function main() {
   }
 
   const outDir = path.resolve(args.outDir || DEFAULT_OUTPUT_DIR);
-  const dataRoot = path.resolve(args.dataRoot || defaultFreeShowDataRoot());
+  const dataRoot = path.resolve(args.dataRoot || defaultHamroShowDataRoot());
 
   if (command === "build" || command === "setup") {
     const result = await buildPack({ outDir, letters: getLetters(args.letters) });
@@ -121,12 +121,12 @@ async function main() {
 }
 
 function printHelp() {
-  console.log(`Nepali Church Pack for FreeShow
+  console.log(`Nepali Church Pack for HamroShow
 
 Usage:
   node scripts/nepal-pack.mjs build [--outDir dist/nepali-church-pack] [--letters all|a,aa,...]
-  node scripts/nepal-pack.mjs install [--outDir dist/nepali-church-pack] [--dataRoot <FreeShow data root>] [--skip-shows]
-  node scripts/nepal-pack.mjs setup [--outDir dist/nepali-church-pack] [--dataRoot <FreeShow data root>] [--letters all|a,aa,...]
+  node scripts/nepal-pack.mjs install [--outDir dist/nepali-church-pack] [--dataRoot <HamroShow data root>] [--skip-shows]
+  node scripts/nepal-pack.mjs setup [--outDir dist/nepali-church-pack] [--dataRoot <HamroShow data root>] [--letters all|a,aa,...]
 `);
 }
 
@@ -167,9 +167,9 @@ function getLetters(input) {
   return list.length ? list : [...NCS_LETTERS];
 }
 
-function defaultFreeShowDataRoot() {
+function defaultHamroShowDataRoot() {
   const home = os.homedir();
-  return path.join(home, "Documents", "FreeShow");
+  return path.join(home, "Documents", "HamroShow");
 }
 
 async function buildPack({ outDir, letters }) {
@@ -190,7 +190,7 @@ async function buildPack({ outDir, letters }) {
   let writtenShows = 0;
   for (const hymn of hymns) {
     const id = hymn.id;
-    const show = toFreeShowSong(hymn);
+    const show = toHamroShowSong(hymn);
     const fileName = `${safeFileName(hymn.title)}__${hymn.sourceId}.show`;
     await fs.writeFile(path.join(showsDir, fileName), JSON.stringify([id, show]));
     writtenShows += 1;
@@ -207,11 +207,11 @@ async function buildPack({ outDir, letters }) {
   await fs.writeFile(
     path.join(outDir, "README_IMPORT.txt"),
     [
-      "FreeShow Nepali Church Pack",
+      "HamroShow Nepali Church Pack",
       "",
-      "1) Close FreeShow before install.",
+      "1) Close HamroShow before install.",
       "2) Run: node scripts/nepal-pack.mjs install",
-      "3) Start FreeShow again.",
+      "3) Start HamroShow again.",
       "",
       "Pack contents:",
       "- Bibles: NNRV Nepali + KJV English (.fsb)",
@@ -410,7 +410,7 @@ function parseNcsPage(html, letter) {
   return list;
 }
 
-function toFreeShowSong(hymn) {
+function toHamroShowSong(hymn) {
   const now = Date.now();
   const layoutId = shortId(`layout:${hymn.id}`);
 

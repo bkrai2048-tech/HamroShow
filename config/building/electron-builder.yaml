@@ -1,6 +1,6 @@
-appId: app.freeshow
-productName: FreeShow
-artifactName: FreeShow-${version}-${arch}.${ext}
+appId: app.hamroshow
+productName: HamroShow
+artifactName: HamroShow-${version}-${arch}.${ext}
 
 # WIDEVINE
 # Use castlabs electron builds to get widevine support
@@ -30,8 +30,8 @@ win:
     azureSignOptions:
         publisherName: Live Church Solutions
         endpoint: https://wus2.codesigning.azure.net/
-        certificateProfileName: FreeShow
-        codeSigningAccountName: FreeShow
+        certificateProfileName: HamroShow
+        codeSigningAccountName: HamroShow
 
 # linux
 

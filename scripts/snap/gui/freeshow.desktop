@@ -1,9 +1,9 @@
 [Desktop Entry]
-Name=FreeShow
-Exec=freeshow %U
+Name=HamroShow
+Exec=hamroshow %U
 Terminal=false
 Type=Application
 Icon=${SNAP}/meta/gui/icon.png
-StartupWMClass=FreeShow
+StartupWMClass=HamroShow
 Comment=Show song lyrics and more for free!
 Categories=AudioVideo;
