@@ -33,7 +33,7 @@
             })
 
             // get list of bibles in language
-            let langCode = window.navigator.language.slice(-2).toLowerCase()
+            let langCode = window.navigator.language.split("-")[0].toLowerCase()
             // if it needs attribution, it's probably more in demand!
             bibleList = sortByName(bibleList).sort((a, b) => ((b.attributionRequired || b.attributionString) as any) - ((a.attributionRequired || a.attributionString) as any))
             let newSorted: any[] = []
