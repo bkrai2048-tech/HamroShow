@@ -1,76 +1,127 @@
 <script lang="ts">
     import { activeDays, activePopup, eventEdit, events, labelsDisabled, popupData, special } from "../../../stores"
+    import { adToBS, bsToAD, ENGLISH_MONTHS, getAvailableYears, getDaysInBSMonth, NEPALI_MONTHS, NEPALI_WEEKDAYS, toNepaliNumeral, type BSDate } from "../../../utils/nepaliCalendar"
     import { actionData } from "../../actions/actionData"
     import { removeDuplicates, sortByTime } from "../../helpers/array"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
-    import { adToBS, bsToAD, ENGLISH_MONTHS, getAvailableYears, getDaysInBSMonth, NEPALI_MONTHS, NEPALI_WEEKDAYS, toNepaliNumeral, type BSDate } from "../../../utils/nepaliCalendar"
     import { MILLISECONDS_IN_A_DAY, copyDate, getWeekNumber, isBetween, isSameDay } from "./calendar"
 
     export let active: string | null
     export let searchValue = ""
 
-    $: sundayFirstDay = $special.firstDayOfWeek === "7"
+    type CalendarMode = "bs" | "ad"
+    type CalendarDay = {
+        bs: BSDate
+        adDate: Date
+        adYear: number
+        adMonth: number
+        adDay: number
+        inMonth: boolean
+    }
 
     const today = new Date()
     const todayBS = adToBS(today)
-    const availableYears = getAvailableYears()
+    const bsYears = getAvailableYears()
+    const firstADYear = bsToAD({ year: bsYears[0], month: 1, day: 1 })?.getFullYear() || today.getFullYear() - 80
+    const lastBSYear = bsYears[bsYears.length - 1]
+    const lastADYear = bsToAD({ year: lastBSYear, month: 12, day: getDaysInBSMonth(lastBSYear, 12) })?.getFullYear() || today.getFullYear() + 20
+    const adYears = Array.from({ length: lastADYear - firstADYear + 1 }, (_, index) => firstADYear + index)
+    const weekdays = [0, 1, 2, 3, 4, 5, 6].map((index) => ({ primary: NEPALI_WEEKDAYS.ne[index], secondary: NEPALI_WEEKDAYS.en[index], index }))
 
-    let year = todayBS.year
-    let month = todayBS.month
+    let bsYear = todayBS.year
+    let bsMonth = todayBS.month
+    let adYear = today.getFullYear()
+    let adMonth = today.getMonth() + 1
     let calendarElem: HTMLElement | undefined
     let nextScrollTimeout: NodeJS.Timeout | null = null
 
     activeDays.set([copyDate(today).getTime()])
 
-    type NepaliCalendarDay = BSDate & {
-        adDate: Date
-        inMonth: boolean
+    $: calendarMode = ($special.calendarMode === "ad" ? "ad" : "bs") as CalendarMode
+    $: yearOptions = calendarMode === "bs" ? bsYears : adYears
+    $: primaryMonthDisplay = getPrimaryMonthDisplay(calendarMode)
+    $: secondaryMonthDisplay = getSecondaryMonthDisplay(calendarMode)
+
+    let days: CalendarDay[][] = []
+    $: getDays(calendarMode, bsYear, bsMonth, adYear, adMonth)
+
+    function getDays(mode: CalendarMode, _bsYear: number, _bsMonth: number, _adYear: number, _adMonth: number) {
+        days = mode === "bs" ? getBSDays(_bsYear, _bsMonth) : getADDays(_adYear, _adMonth)
     }
 
-    let days: NepaliCalendarDay[][] = []
-    $: getDays(year, month, sundayFirstDay)
+    function getBSDays(year: number, month: number) {
+        const daysInMonth = getDaysInBSMonth(year, month)
+        const firstDayAD = bsToAD({ year, month, day: 1 })
+        if (!daysInMonth || !firstDayAD) return days
 
-    function getDays(bsYear: number, bsMonth: number, _updater: any) {
-        const daysInMonth = getDaysInBSMonth(bsYear, bsMonth)
-        const firstDayAD = bsToAD({ year: bsYear, month: bsMonth, day: 1 })
-        if (!daysInMonth || !firstDayAD) return
-
-        const firstDayIndex = firstDayAD.getDay()
-        const beforeCount = sundayFirstDay ? firstDayIndex : firstDayIndex === 0 ? 6 : firstDayIndex - 1
-        const previousMonth = moveBSDate(bsYear, bsMonth, -1)
-        const nextMonth = moveBSDate(bsYear, bsMonth, 1)
+        const beforeCount = firstDayAD.getDay()
+        const previousMonth = moveBSDate(year, month, -1)
+        const nextMonth = moveBSDate(year, month, 1)
         const previousMonthDays = getDaysInBSMonth(previousMonth.year, previousMonth.month)
 
-        let cells: NepaliCalendarDay[] = []
-        for (let offset = beforeCount - 1; offset >= 0; offset--) cells.push(createDay(previousMonth.year, previousMonth.month, previousMonthDays - offset, false))
-        for (let day = 1; day <= daysInMonth; day++) cells.push(createDay(bsYear, bsMonth, day, true))
+        const cells: CalendarDay[] = []
+        for (let offset = beforeCount - 1; offset >= 0; offset--) cells.push(createBSDay(previousMonth.year, previousMonth.month, previousMonthDays - offset, false))
+        for (let day = 1; day <= daysInMonth; day++) cells.push(createBSDay(year, month, day, true))
 
         let nextDay = 1
         while (cells.length < 42) {
-            cells.push(createDay(nextMonth.year, nextMonth.month, nextDay, false))
+            cells.push(createBSDay(nextMonth.year, nextMonth.month, nextDay, false))
             nextDay++
         }
 
-        days = []
-        while (cells.length) days.push(cells.splice(0, 7))
+        return chunkWeeks(cells)
     }
 
-    function createDay(bsYear: number, bsMonth: number, day: number, inMonth: boolean): NepaliCalendarDay {
+    function getADDays(year: number, month: number) {
+        const daysInMonth = new Date(year, month, 0).getDate()
+        const firstDayAD = new Date(year, month - 1, 1)
+        const beforeCount = firstDayAD.getDay()
+
+        const cells: CalendarDay[] = []
+        for (let offset = beforeCount - 1; offset >= 0; offset--) cells.push(createADDay(new Date(year, month - 1, -offset), false))
+        for (let day = 1; day <= daysInMonth; day++) cells.push(createADDay(new Date(year, month - 1, day), true))
+
+        let nextOffset = 1
+        while (cells.length < 42) {
+            cells.push(createADDay(new Date(year, month - 1, daysInMonth + nextOffset), false))
+            nextOffset++
+        }
+
+        return chunkWeeks(cells)
+    }
+
+    function chunkWeeks(cells: CalendarDay[]) {
+        const weeks: CalendarDay[][] = []
+        while (cells.length) weeks.push(cells.splice(0, 7))
+        return weeks
+    }
+
+    function createBSDay(year: number, month: number, day: number, inMonth: boolean): CalendarDay {
+        const adDate = bsToAD({ year, month, day }) || today
+        return createCalendarDay(adDate, { year, month, day }, inMonth)
+    }
+
+    function createADDay(adDate: Date, inMonth: boolean): CalendarDay {
+        return createCalendarDay(adDate, adToBS(adDate), inMonth)
+    }
+
+    function createCalendarDay(adDate: Date, bs: BSDate, inMonth: boolean): CalendarDay {
         return {
-            year: bsYear,
-            month: bsMonth,
-            day,
-            adDate: bsToAD({ year: bsYear, month: bsMonth, day }) || today,
+            bs,
+            adDate,
+            adYear: adDate.getFullYear(),
+            adMonth: adDate.getMonth() + 1,
+            adDay: adDate.getDate(),
             inMonth
         }
     }
 
-    function moveBSDate(bsYear: number, bsMonth: number, amount: number) {
-        let nextYear = bsYear
-        let nextMonth = bsMonth + amount
+    function moveBSDate(year: number, month: number, amount: number) {
+        let nextYear = year
+        let nextMonth = month + amount
         while (nextMonth < 1) {
             nextMonth += 12
             nextYear--
@@ -83,7 +134,7 @@
     }
 
     let currentEvents: any[] = []
-    $: updateEvents($events, { year, month, days, searchValue })
+    $: updateEvents($events, { days, searchValue })
 
     function updateEvents(events: any, _updater: any) {
         if (!days[0]?.[0]) return
@@ -104,15 +155,35 @@
         currentEvents = currentEvents.sort((a, b) => a.from - b.from)
     }
 
-    let weekdays: { primary: string; secondary: string; index: number }[] = []
-    $: {
-        const order = sundayFirstDay ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]
-        weekdays = order.map((index) => ({ primary: NEPALI_WEEKDAYS.ne[index], secondary: NEPALI_WEEKDAYS.en[index], index }))
+    function setCalendarMode(mode: CalendarMode) {
+        if (mode === calendarMode) return
+
+        if (mode === "ad") {
+            const anchor = bsToAD({ year: bsYear, month: bsMonth, day: 1 }) || today
+            adYear = anchor.getFullYear()
+            adMonth = anchor.getMonth() + 1
+        } else {
+            const bsDate = adToBS(new Date(adYear, adMonth - 1, 1))
+            bsYear = bsDate.year
+            bsMonth = bsDate.month
+        }
+
+        special.update((data) => ({ ...data, calendarMode: mode }))
     }
 
-    $: secondaryMonthDisplay = getSecondaryMonthDisplay(year, month)
+    function getPrimaryMonthDisplay(mode: CalendarMode) {
+        if (mode === "ad") return `${toNepaliNumeral(adYear)} ${ENGLISH_MONTHS.ne[adMonth - 1]}`
+        return `${toNepaliNumeral(bsYear)} ${NEPALI_MONTHS.ne[bsMonth - 1]}`
+    }
 
-    function getSecondaryMonthDisplay(bsYear: number, bsMonth: number) {
+    function getSecondaryMonthDisplay(mode: CalendarMode) {
+        if (mode === "ad") {
+            const startBS = adToBS(new Date(adYear, adMonth - 1, 1))
+            const endBS = adToBS(new Date(adYear, adMonth, 0))
+            if (startBS.year === endBS.year && startBS.month === endBS.month) return `${toNepaliNumeral(startBS.year)} ${NEPALI_MONTHS.ne[startBS.month - 1]}`
+            return `${toNepaliNumeral(startBS.year)} ${NEPALI_MONTHS.ne[startBS.month - 1]} / ${toNepaliNumeral(endBS.year)} ${NEPALI_MONTHS.ne[endBS.month - 1]}`
+        }
+
         const daysInMonth = getDaysInBSMonth(bsYear, bsMonth)
         const startAD = bsToAD({ year: bsYear, month: bsMonth, day: 1 })
         const endAD = bsToAD({ year: bsYear, month: bsMonth, day: daysInMonth })
@@ -144,30 +215,54 @@
         const scrolledToBottom = calendarElem.scrollTop + 1 + calendarElem.offsetHeight >= calendarElem.scrollHeight
         if (checkScroll && !scrolledToBottom) return
 
-        const next = moveBSDate(year, month, 1)
+        if (calendarMode === "ad") {
+            const next = new Date(adYear, adMonth, 1)
+            adYear = next.getFullYear()
+            adMonth = next.getMonth() + 1
+            return
+        }
+
+        const next = moveBSDate(bsYear, bsMonth, 1)
         if (!getDaysInBSMonth(next.year, next.month)) return
-        year = next.year
-        month = next.month
+        bsYear = next.year
+        bsMonth = next.month
     }
 
     function previousMonth(checkScroll = false) {
         const scrolledToTop = calendarElem?.scrollTop === 0
         if (checkScroll && !scrolledToTop) return
 
-        const previous = moveBSDate(year, month, -1)
+        if (calendarMode === "ad") {
+            const previous = new Date(adYear, adMonth - 2, 1)
+            adYear = previous.getFullYear()
+            adMonth = previous.getMonth() + 1
+            return
+        }
+
+        const previous = moveBSDate(bsYear, bsMonth, -1)
         if (!getDaysInBSMonth(previous.year, previous.month)) return
-        year = previous.year
-        month = previous.month
+        bsYear = previous.year
+        bsMonth = previous.month
     }
 
     function previousYear() {
-        if (!getDaysInBSMonth(year - 1, month)) return
-        year--
+        if (calendarMode === "ad") {
+            adYear--
+            return
+        }
+
+        if (!getDaysInBSMonth(bsYear - 1, bsMonth)) return
+        bsYear--
     }
 
     function nextYear() {
-        if (!getDaysInBSMonth(year + 1, month)) return
-        year++
+        if (calendarMode === "ad") {
+            adYear++
+            return
+        }
+
+        if (!getDaysInBSMonth(bsYear + 1, bsMonth)) return
+        bsYear++
     }
 
     function getEvents(day: Date, currentEvents: any[], type: string) {
@@ -242,10 +337,12 @@
         return type
     }
 
-    $: isPresentDay = !!$activeDays.length && isSameDay(new Date($activeDays[0]), today) && year === todayBS.year && month === todayBS.month
+    $: isPresentDay = !!$activeDays.length && isSameDay(new Date($activeDays[0]), today) && ((calendarMode === "bs" && bsYear === todayBS.year && bsMonth === todayBS.month) || (calendarMode === "ad" && adYear === today.getFullYear() && adMonth === today.getMonth() + 1))
     function setToPresentDay() {
-        year = todayBS.year
-        month = todayBS.month
+        bsYear = todayBS.year
+        bsMonth = todayBS.month
+        adYear = today.getFullYear()
+        adMonth = today.getMonth() + 1
         activeDays.set([copyDate(today).getTime()])
     }
 
@@ -253,40 +350,81 @@
         const weekday = weekdays[index]?.index
         return weekday === 6
     }
+
+    function getWeekLabel(week: CalendarDay[]) {
+        if (calendarMode === "ad") return getWeekNumber(week[0].adDate)
+        return getBSWeekNumber(week[0])
+    }
+
+    function getBSWeekNumber(day: CalendarDay) {
+        const yearStart = bsToAD({ year: day.bs.year, month: 1, day: 1 })
+        if (!yearStart) return getWeekNumber(day.adDate)
+
+        const daysSinceNewYear = Math.floor((copyDate(day.adDate).getTime() - copyDate(yearStart).getTime()) / MILLISECONDS_IN_A_DAY)
+        return Math.max(1, Math.floor((daysSinceNewYear + yearStart.getDay()) / 7) + 1)
+    }
+
+    function getPrimaryDay(day: CalendarDay) {
+        return toNepaliNumeral(calendarMode === "ad" ? day.adDay : day.bs.day)
+    }
+
+    function getSecondaryDay(day: CalendarDay) {
+        if (calendarMode === "ad") return `${toNepaliNumeral(day.bs.day)} ${NEPALI_MONTHS.ne[day.bs.month - 1]}`
+        return toNepaliNumeral(day.adDay)
+    }
 </script>
 
 <div class="calendar">
     <div class="calendarHeader">
         <button type="button" class="todayButton" on:click={setToPresentDay}>आज</button>
 
+        <div class="modeToggle" aria-label="Calendar mode">
+            <button type="button" class:active={calendarMode === "bs"} on:click={() => setCalendarMode("bs")}>बि.सं.</button>
+            <button type="button" class:active={calendarMode === "ad"} on:click={() => setCalendarMode("ad")}>ई.सं.</button>
+        </div>
+
         <div class="monthControls">
             <button type="button" on:click={previousYear} title="Previous year"><Icon id="previous" size={0.9} /><Icon id="previous" size={0.9} /></button>
             <button type="button" on:click={() => previousMonth()} title="Previous month"><Icon id="previous" size={1} /></button>
 
-            <select bind:value={year} aria-label="BS year">
-                {#each availableYears as availableYear}
-                    <option value={availableYear}>{toNepaliNumeral(availableYear)}</option>
-                {/each}
-            </select>
+            {#if calendarMode === "bs"}
+                <select bind:value={bsYear} aria-label="BS year">
+                    {#each yearOptions as availableYear}
+                        <option value={availableYear}>{toNepaliNumeral(availableYear)}</option>
+                    {/each}
+                </select>
 
-            <select bind:value={month} aria-label="BS month">
-                {#each NEPALI_MONTHS.ne as monthName, index}
-                    <option value={index + 1}>{monthName}</option>
-                {/each}
-            </select>
+                <select bind:value={bsMonth} aria-label="BS month">
+                    {#each NEPALI_MONTHS.ne as monthName, index}
+                        <option value={index + 1}>{monthName}</option>
+                    {/each}
+                </select>
+            {:else}
+                <select bind:value={adYear} aria-label="AD year">
+                    {#each yearOptions as availableYear}
+                        <option value={availableYear}>{toNepaliNumeral(availableYear)}</option>
+                    {/each}
+                </select>
+
+                <select bind:value={adMonth} aria-label="AD month">
+                    {#each ENGLISH_MONTHS.ne as monthName, index}
+                        <option value={index + 1}>{monthName}</option>
+                    {/each}
+                </select>
+            {/if}
 
             <button type="button" on:click={() => nextMonth()} title="Next month"><Icon id="next" size={1} /></button>
             <button type="button" on:click={nextYear} title="Next year"><Icon id="next" size={0.9} /><Icon id="next" size={0.9} /></button>
         </div>
 
         <div class="monthSummary">
-            <strong>{toNepaliNumeral(year)} {NEPALI_MONTHS.ne[month - 1]}</strong>
+            <strong>{primaryMonthDisplay}</strong>
             <span>{secondaryMonthDisplay}</span>
         </div>
     </div>
 
     <div class="week headerWeek">
-        <div class="weekday sideLabel">बि.सं.</div>
+        <div class="weekday sideLabel">हप्ता</div>
         {#each weekdays as weekday}
             <div class="weekday" class:saturday={weekday.index === 6}>
                 <span>{weekday.primary}</span>
@@ -298,13 +436,13 @@
     <div class="grid" on:wheel|passive={wheel} bind:this={calendarElem}>
         {#each days as week}
             <div class="week">
-                <span class="weeknumber">{toNepaliNumeral(getWeekNumber(week[0].adDate))}</span>
+                <span class="weeknumber">{toNepaliNumeral(getWeekLabel(week))}</span>
 
                 {#each week as day, index}
                     {@const dayEvents = getEvents(day.adDate, currentEvents, active || "event")}
                     <div class="day" class:today={isSameDay(day.adDate, today)} class:faded={!day.inMonth} class:active={$activeDays?.includes(copyDate(day.adDate).getTime())} class:saturday={isSaturday(index)} on:mousedown={(e) => dayClick(e, day.adDate)} on:mousemove={(e) => move(e, day.adDate)}>
-                        <span class="bsDay">{toNepaliNumeral(day.day)}</span>
-                        <span class="adDay">{day.adDate.getDate()}</span>
+                        <span class="bsDay">{getPrimaryDay(day)}</span>
+                        <span class="adDay">{getSecondaryDay(day)}</span>
 
                         <span class="events">
                             {#each dayEvents as event, i}
@@ -344,7 +482,7 @@
     <div class="divider"></div>
 
     <span class="floatingMonth">
-        {toNepaliNumeral(year)} {NEPALI_MONTHS.ne[month - 1]}
+        {primaryMonthDisplay}
         <small>{secondaryMonthDisplay}</small>
     </span>
 </FloatingInputs>
@@ -374,7 +512,7 @@
 
     .calendarHeader {
         display: grid;
-        grid-template-columns: auto minmax(260px, 1fr) auto;
+        grid-template-columns: auto auto minmax(260px, 1fr) auto;
         gap: 12px;
         align-items: center;
         padding: 10px 12px;
@@ -383,6 +521,7 @@
     }
 
     .todayButton,
+    .modeToggle button,
     .monthControls button,
     .monthControls select {
         border: 1px solid color-mix(in srgb, var(--secondary) 35%, transparent);
@@ -393,10 +532,29 @@
     }
 
     .todayButton,
+    .modeToggle button,
     .monthControls button {
         cursor: pointer;
         padding: 4px 9px;
         font-weight: 700;
+    }
+
+    .modeToggle {
+        display: inline-flex;
+        overflow: hidden;
+        border: 1px solid color-mix(in srgb, var(--secondary) 35%, transparent);
+        border-radius: 5px;
+    }
+
+    .modeToggle button {
+        border: 0;
+        border-radius: 0;
+        min-width: 54px;
+    }
+
+    .modeToggle button.active {
+        background: var(--secondary);
+        color: var(--primary-darkest);
     }
 
     .monthControls {

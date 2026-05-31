@@ -5,6 +5,8 @@ const Terser = require("terser")
 // const HTMLMinifier = require("html-minifier")
 // const CleanCSS = require("clean-css")
 
+const MAX_TERSER_BYTES = 2_000_000
+
 function getAllJSFiles(dirPath, arrayOfFiles) {
     const files = readdirSync(dirPath)
 
@@ -89,19 +91,24 @@ const minifyJSOptions = {
 }
 
 async function minifyJSFiles(filePaths) {
-    await Promise.all(filePaths.map((filePath) => minifyJS(filePath)))
+    for (const filePath of filePaths) await minifyJS(filePath)
 }
 
 async function minifyJS(filePath, newPath = "") {
     const unminified = readFileSync(filePath, "utf8")
+    if (Buffer.byteLength(unminified, "utf8") > MAX_TERSER_BYTES) {
+        console.warn(`Skipping JS minify for large bundle ${filePath}`)
+        if (newPath) writeFileSync(newPath, unminified)
+        return
+    }
 
     try {
         const minified = await Terser.minify(unminified, minifyJSOptions)
         if (!minified?.code) return
         writeFileSync(newPath || filePath, minified.code)
     } catch (err) {
-        process.emitWarning(err)
-        process.abort()
+        console.warn(`Skipping JS minify for ${filePath}:`, err?.message || err)
+        if (newPath) writeFileSync(newPath, unminified)
     }
 }
 

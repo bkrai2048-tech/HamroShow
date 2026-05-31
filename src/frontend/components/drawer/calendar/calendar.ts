@@ -5,6 +5,7 @@ import { ShowObj } from "../../../classes/Show"
 import { createCategory } from "../../../converters/importHelpers"
 import { activeDays, calendarAddShow, events, showsCache } from "../../../stores"
 import { translateText } from "../../../utils/language"
+import { adToBS, formatBSDate } from "../../../utils/nepaliCalendar"
 import { getItemText } from "../../edit/scripts/textStyle"
 import { clone, removeDuplicates, sortByTime } from "../../helpers/array"
 import { loadShows } from "../../helpers/setShow"
@@ -54,7 +55,7 @@ export async function createSlides(currentEvents: any[], showId = "") {
     currentEvents.forEach(createEventSlide)
     function createEventSlide(day: any) {
         const id = uid()
-        let textDay = new Date(day.date).getDate() + ". " + translateText("month." + (new Date(day.date).getMonth() + 1))
+        let textDay = getNepaliDateLabel(new Date(day.date))
         let group: string = textDay
 
         const from = new Date(day.events[0].from)
@@ -181,16 +182,9 @@ export async function createSlides(currentEvents: any[], showId = "") {
 }
 
 function getEventStringOverMultipleDays(textDay, [day, from, to]: Date[]): string {
-    const startAndEndSameYear = from.getFullYear() === to.getFullYear()
-    const startAndEndSameMonth = from.getMonth() === to.getMonth()
-
-    if (startAndEndSameMonth && startAndEndSameYear) return `${new Date(day).getDate()}.-${to.getDate()}. ${translateText("month." + to.getMonth() + 1)}`
-
-    if (!startAndEndSameYear) textDay += " " + from.getFullYear()
-    textDay += ` - ${to.getDate()}. ${translateText("month." + to.getMonth() + 1)}`
-    if (!startAndEndSameYear) textDay += " " + to.getFullYear()
-
-    return textDay
+    const startLabel = getNepaliDateLabel(new Date(day))
+    const endLabel = getNepaliDateLabel(to)
+    return startLabel === endLabel ? textDay : `${startLabel} - ${endLabel}`
 }
 
 function getDayNameIfCloseToToday(day: Date): string {
@@ -215,10 +209,14 @@ function createCalendarShowName() {
     let name = ""
     const { sortedDays, from, to } = sortDays(get(activeDays))
 
-    name = getDateString(from)
-    if (sortedDays[0] - sortedDays[1] < 0) name += " - " + getDateString(to)
+    name = getNepaliDateLabel(from)
+    if (sortedDays[0] - sortedDays[1] < 0) name += " - " + getNepaliDateLabel(to)
 
     return checkName(name)
+}
+
+function getNepaliDateLabel(date: Date) {
+    return formatBSDate(adToBS(date), "ne")
 }
 
 function getToNextDuration(textLength: number) {

@@ -10,7 +10,7 @@
     import { wait } from "../../../utils/common"
     import { translateText } from "../../../utils/language"
     import { localizeBibleNumbers, normalizeBibleReferenceInput, shouldUseNepaliNumbers } from "../../../utils/nepaliNumbers"
-    import { clone } from "../../helpers/array"
+    import { clone, removeDuplicates } from "../../helpers/array"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
@@ -205,7 +205,11 @@
     $: chapters = currentBibleData?.bookData?.data?.chapters || null
     // $: verses = currentBibleData?.chapterData?.data?.verses || null
     $: verses = currentBibleData?.chapterData?.data?.verses?.map((a) => ({ ...a, text: currentBibleData?.chapterData?.getVerse(a.number).getHTML() || "" })) || null
-    $: activeBibleUsesNepaliNumbers = shouldUseNepaliNumbers(previewBibleId, previewBibleData, books?.slice(0, 8).map((book) => book.name))
+    $: activeBibleUsesNepaliNumbers = shouldUseNepaliNumbers(
+        previewBibleId,
+        previewBibleData,
+        books?.slice(0, 8).map((book) => book.name)
+    )
 
     // category color / abbreviation data
     $: booksData = currentBibleData?.bibleData?.getBooksData() || []
@@ -382,7 +386,7 @@
         // load new data
         // NOTE: if chapter is not a number it does not work
         const chapterNumber = Number(targetChapterNumbers[targetChapterNumbers.length - 1])
-        
+
         const chapterId = `${previewBibleId}_${activeReference.book}_${chapterNumber}`
         if (pendingChapterId !== chapterId) {
             pendingChapterId = chapterId
@@ -568,29 +572,24 @@
             return
         }
 
+        const directReference = await parseDirectReference(normalizedSearchValue)
+        if (searchId !== currentSearchId) return
+        if (directReference) {
+            // normalize the search box so it reflects the exact selection the user will get
+            searchValue = displayNumber(directReference.referenceLabel)
+            resetContentSearch()
+            await openBook(directReference.bookNumber, directReference.bookOnly ? undefined : directReference.chapters, directReference.bookOnly ? undefined : directReference.verses)
+            return
+        }
+
         const multiReference = await parseMultiChapterReference(normalizedSearchValue)
 
         if (searchId !== currentSearchId) return
-
         if (multiReference) {
             // normalize the search box so it reflects the exact selection the user will get
             searchValue = displayNumber(multiReference.referenceLabel)
             resetContentSearch()
             await openBook(multiReference.bookNumber, multiReference.chapters, multiReference.verses)
-            return
-        }
-
-        const directReference = await parseDirectReference(normalizedSearchValue)
-        if (searchId !== currentSearchId) return
-        if (directReference) {
-            if (directReference.bookOnly) {
-                await searchFromMainSearch(normalizedSearchValue)
-                return
-            }
-
-            searchValue = displayNumber(directReference.referenceLabel)
-            resetContentSearch()
-            await openBook(directReference.bookNumber, directReference.chapters, directReference.verses)
             return
         }
 
@@ -699,8 +698,8 @@
     function findReferenceBook(value: string) {
         const candidates = (books || [])
             .flatMap((book, index) => {
-                const names = [book.name, getBookDisplayName(book, index), booksData[index]?.abbreviation, $customScriptureBooks[previewBibleId]?.[index]]
-                return removeDuplicates(names.filter(Boolean).map((name) => ({ book, name: String(name) })))
+                const names = removeDuplicates([book.name, getBookDisplayName(book, index), booksData[index]?.abbreviation, $customScriptureBooks[previewBibleId]?.[index]].filter(Boolean).map(String))
+                return names.map((name) => ({ book, name }))
             })
             .sort((a, b) => b.name.length - a.name.length)
 
@@ -763,15 +762,16 @@
         const segmentsToProcess = rawSegments.length ? rawSegments : [sanitizedValue]
 
         const firstSegment = segmentsToProcess[0]
+        const firstBookMatch = findReferenceBook(firstSegment)
         let baseResult = bibleData.bookSearch(firstSegment)
         if (!baseResult?.book && firstSegment.includes("-")) {
             const fallbackTarget = firstSegment.split("-")[0]?.trim()
             if (fallbackTarget) baseResult = bibleData.bookSearch(fallbackTarget)
         }
-        if (!baseResult?.book) return null
+        if (!baseResult?.book && !firstBookMatch) return null
 
-        const bookNumber = Number(baseResult.book)
-        const canonicalBookName = books?.find((book) => Number(book.number) === bookNumber)?.name || firstSegment
+        const bookNumber = Number(baseResult?.book || firstBookMatch?.book.number)
+        const canonicalBookName = firstBookMatch?.name || books?.find((book) => Number(book.number) === bookNumber)?.name || firstSegment
 
         const resolvedSegments: string[] = []
         for (let i = 0; i < segmentsToProcess.length; i++) {
@@ -787,11 +787,13 @@
         const chapters: (number | string)[] = []
         const verses: (number | string)[][] = []
         for (const segment of resolvedSegments) {
-            const parsed = bibleData.bookSearch(segment)
-            if (!parsed?.chapter) return null
+            const direct = await parseDirectReference(segment)
+            const parsed = direct || bibleData.bookSearch(segment)
+            if (!parsed?.chapter && !parsed?.chapters?.length) return null
 
-            const chapterNumber = Number(parsed.chapter)
-            const verseList = parsed.verses?.length ? parsed.verses : await getEntireChapterVerses(bookNumber, chapterNumber, bibleData)
+            const chapterNumber = Number(parsed.chapter || parsed.chapters?.[0])
+            const parsedVerses = Array.isArray(parsed.verses?.[0]) ? parsed.verses[0] : parsed.verses
+            const verseList = parsedVerses?.length ? parsedVerses : await getEntireChapterVerses(bookNumber, chapterNumber, bibleData)
             if (!verseList?.length) return null
 
             chapters.push(chapterNumber)
@@ -811,8 +813,11 @@
         const trimmed = segment?.trim()
         if (!trimmed) return bookName
 
+        const directMatch = findReferenceBook(trimmed)
+        if (Number(directMatch?.book.number) === bookNumber) return trimmed
+
         const attempt = bibleData.bookSearch(trimmed)
-        if (attempt?.book === bookNumber) return trimmed
+        if (Number(attempt?.book) === Number(bookNumber)) return trimmed
 
         return `${bookName} ${trimmed}`.replace(/\s+/g, " ").trim()
     }
@@ -911,13 +916,7 @@
             return
         }
 
-        const result = await currentBibleData?.bibleData?.textSearch(normalizedSearchValue)
-        if (!result) {
-            contentSearchResults = []
-            return
-        }
-
-        contentSearchResults = result
+        contentSearchResults = await searchBibleText(normalizedSearchValue)
     }
 
     async function searchFromMainSearch(normalizedSearchValue: string) {
@@ -930,8 +929,70 @@
             return
         }
 
-        const result = await currentBibleData?.bibleData?.textSearch(normalizedSearchValue)
-        contentSearchResults = result || []
+        contentSearchResults = await searchBibleText(normalizedSearchValue)
+    }
+
+    async function searchBibleText(value: string): Promise<VerseReference[]> {
+        const bibleData = currentBibleData?.bibleData
+        if (!bibleData) return []
+
+        try {
+            const result = await bibleData.textSearch(value)
+            if (result?.length) return result
+        } catch (err) {
+            console.error("Bible text search failed", err)
+        }
+
+        return localBibleTextSearch(value)
+    }
+
+    function localBibleTextSearch(value: string): VerseReference[] {
+        const bibleData = currentBibleData?.bibleData
+        const bibleBooks = bibleData?.data?.books || []
+        const query = normalizeContentSearchText(value)
+        if (!query || query.length < 2) return []
+
+        const matches: VerseReference[] = []
+        for (const book of bibleBooks) {
+            const bookNumber = Number(book.number)
+            const bookName = getSearchBookName(book)
+            for (const chapter of book.chapters || []) {
+                const chapterNumber = Number(chapter.number)
+                for (const verse of chapter.verses || []) {
+                    const verseNumber = Number(verse.number)
+                    const verseText = sanitizeVerseText(verse.text || verse.value || "")
+                    const searchable = normalizeContentSearchText(`${bookName} ${chapterNumber}:${verseNumber} ${verseText}`)
+                    if (!searchable.includes(query)) continue
+
+                    matches.push({
+                        book: bookNumber,
+                        chapter: chapterNumber,
+                        verse: { ...verse, number: verseNumber, text: verseText },
+                        reference: displayNumber(`${bookName} ${chapterNumber}:${verseNumber}`)
+                    } as VerseReference)
+                    if (matches.length >= 80) return matches
+                }
+            }
+        }
+
+        return matches
+    }
+
+    function getSearchBookName(book: any) {
+        const index = (books || []).findIndex((candidate) => Number(candidate.number) === Number(book.number))
+        if (index >= 0) return getBookDisplayName(books[index], index)
+        return book.name || defaultBibleBookNames[book.number] || book.number
+    }
+
+    function normalizeContentSearchText(value: string) {
+        return normalizeBibleReferenceInput(value || "")
+            .normalize("NFC")
+            .toLowerCase()
+            .replace(/<[^>]+>/g, " ")
+            .replace(/[\u200c\u200d]/g, "")
+            .replace(/[।|,;:.'"`’‘“”()[\]{}\-–—!?]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
     }
 
     function findBookMatches(value: string) {
@@ -940,15 +1001,26 @@
         const query = normalizeBookSearchValue(value)
         if (query.length < 2) return []
 
-        return books
-            .map((book, index) => {
-                const name = getBookDisplayName(book, index)
-                const normalizedName = normalizeBookSearchValue(name)
-                const score = normalizedName === query ? 0 : normalizedName.startsWith(query) ? 1 : normalizedName.includes(query) ? 2 : 99
-                return { number: book.number, name, score }
+        const matches = books
+            .flatMap((book, index) => {
+                const names = removeDuplicates([book.name, getBookDisplayName(book, index), booksData[index]?.abbreviation, $customScriptureBooks[previewBibleId]?.[index]].filter(Boolean).map(String))
+                return names.map((name) => {
+                    const normalizedName = normalizeBookSearchValue(name)
+                    const score = normalizedName === query ? 0 : normalizedName.startsWith(query) ? 1 : normalizedName.includes(query) ? 2 : 99
+                    return { number: book.number, name: getBookDisplayName(book, index), score }
+                })
             })
             .filter((book) => book.score < 99)
             .sort((a, b) => a.score - b.score || Number(a.number) - Number(b.number))
+
+        const seen = new Set<string>()
+        return matches
+            .filter((book) => {
+                const key = String(book.number)
+                if (seen.has(key)) return false
+                seen.add(key)
+                return true
+            })
             .slice(0, 8)
     }
 

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { activeDays, activePopup, eventEdit, events } from "../../../stores"
     import { triggerClickOnEnterSpace } from "../../../utils/clickable"
-    import { translateText } from "../../../utils/language"
+    import { adToBS, formatBSDate } from "../../../utils/nepaliCalendar"
     import { actionData } from "../../actions/actionData"
     import { getActionName } from "../../actions/actions"
     import { sortByTime } from "../../helpers/array"
@@ -14,6 +14,7 @@
 
     let current = new Date($activeDays[0])
     let currentEvents: any[] = []
+    $: currentBSDate = formatBSDate(adToBS(current), "ne")
 
     $: updateEvents({ type, $activeDays, $events })
 
@@ -40,8 +41,7 @@
 {#if $activeDays.length}
     <div class="main">
         <span class="date">
-            {current.getDate()}. {translateText("month." + (current.getMonth() + 1))}
-            {current.getFullYear()}
+            {currentBSDate}
         </span>
 
         <div class="scroll">
