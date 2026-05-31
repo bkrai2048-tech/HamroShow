@@ -22,6 +22,7 @@
     import Cameras from "../live/Cameras.svelte"
     import NDIStreams from "../live/NDIStreams.svelte"
     import Screens from "../live/Screens.svelte"
+    import Switcher from "../live/Switcher.svelte"
     import Windows from "../live/Windows.svelte"
     import PlayerVideos from "../player/PlayerVideos.svelte"
     import CLogo from "./CLogo.svelte"
@@ -98,7 +99,7 @@
 
     $: activeProviderId = (isProviderSection && active ? active : null) as ContentProviderId | null
 
-    let inputsTab = $drawerTabsData.media?.openedSubSubTab?.cameras || "cameras"
+    let inputsTab = $drawerTabsData.media?.openedSubSubTab?.inputs || "switcher"
     let onlineTab = $drawerTabsData.media?.openedSubSubTab?.online || "youtube"
     $: if (active === "online" && onlineTab === "pixabay" && (searchValue !== null || activeView)) loadFilesAsync()
     $: if (active === "online" && onlineTab === "unsplash" && (searchValue !== null || activeView)) loadFilesAsync()
@@ -480,6 +481,10 @@
 
 {#if active === "inputs"}
     <div class="tabs">
+        <MaterialButton style="flex: 1;" isActive={inputsTab === "switcher"} on:click={() => setSubSubTab("switcher")}>
+            <Icon size={1.2} id="input" white />
+            <p>Switcher</p>
+        </MaterialButton>
         <MaterialButton style="flex: 1;" isActive={inputsTab === "cameras"} on:click={() => setSubSubTab("cameras")}>
             <Icon size={1.2} id="camera" white />
             <p><T id="live.cameras" /></p>
@@ -545,7 +550,9 @@
             <Canva />
         {:else if active === "inputs"}
             <div class="gridgap">
-                {#if inputsTab === "cameras"}
+                {#if inputsTab === "switcher"}
+                    <Switcher bind:streams {searchValue} />
+                {:else if inputsTab === "cameras"}
                     <Cameras
                         on:click={({ detail }) => {
                             let e = detail.event
