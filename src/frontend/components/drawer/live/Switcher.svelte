@@ -1,17 +1,20 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte"
+    import { uid } from "uid"
     import { BLACKMAGIC, NDI } from "../../../../types/Channels"
     import { Main } from "../../../../types/IPC/Main"
     import { requestMain } from "../../../IPC/main"
     import { type CameraData, cameraManager } from "../../../media/cameraManager"
-    import { outLocked, outputs, special } from "../../../stores"
+    import { outLocked, outputs, playerVideos, special } from "../../../stores"
     import { destroy, receive, send } from "../../../utils/request"
     import Icon from "../../helpers/Icon.svelte"
     import { getFirstActiveOutput, setOutput } from "../../helpers/output"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
+    import MaterialTextInput from "../../inputs/MaterialTextInput.svelte"
     import Loader from "../../main/Loader.svelte"
     import { clearBackground } from "../../output/clear"
     import Center from "../../system/Center.svelte"
+    import Card from "../Card.svelte"
     import BmdStream from "./BMDStream.svelte"
     import Cam from "./Cam.svelte"
     import Capture from "./Capture.svelte"
@@ -20,7 +23,7 @@
     export let searchValue = ""
     export let streams: MediaStream[] = []
 
-    type SourceType = "camera" | "screen" | "ndi" | "blackmagic"
+    type SourceType = "camera" | "screen" | "ndi" | "blackmagic" | "web"
 
     interface SwitcherSource {
         id: string
@@ -31,6 +34,7 @@
         cameraGroup?: string
         screen?: { id: string; name: string }
         data?: any
+        url?: string
         payload: any
     }
 
@@ -52,6 +56,9 @@
     let loadingNdi = true
     let loadingBlackmagic = true
     let previewSource: SwitcherSource | null = null
+    let webUrl = ""
+    let webName = ""
+    let webUrlError = ""
 
     const NDI_RECEIVER_ID = "LIVE_SWITCHER_NDI"
     const BLACKMAGIC_RECEIVER_ID = "LIVE_SWITCHER_BLACKMAGIC"
@@ -138,7 +145,13 @@
         payload: { id: source.id, name: source.name, type: "blackmagic" }
     }))
 
+    $: webSwitcherSources = Object.entries($playerVideos)
+        .filter(([, video]) => video.type === "web")
+        .map(([id, video]) => createWebSource(id, video))
+        .filter(Boolean) as SwitcherSource[]
+
     $: sourceSections = [
+        { id: "web", title: "VDO.Ninja URLs", icon: "input", loading: false, sources: webSwitcherSources.filter(matchesSearch) },
         { id: "cameras", title: "Cameras", icon: "camera", loading: loadingLocal, sources: cameraSources.filter(matchesSearch) },
         { id: "screens", title: "Screens", icon: "screen", loading: loadingLocal, sources: screenSources.filter(matchesSearch) },
         { id: "windows", title: "Windows", icon: "window", loading: loadingLocal, sources: windowSources.filter(matchesSearch) },
@@ -209,7 +222,7 @@
         const search = normalize(searchValue)
         if (!search) return true
 
-        return normalize(source.name).includes(search) || normalize(source.section).includes(search) || normalize(source.type).includes(search)
+        return normalize(source.name).includes(search) || normalize(source.section).includes(search) || normalize(source.type).includes(search) || normalize(source.url).includes(search)
     }
 
     function normalize(value = "") {
@@ -232,7 +245,7 @@
 
     function sourceKey(source: SwitcherSource | null | undefined) {
         if (!source) return ""
-        return `${source.type}:${source.id}`
+        return `${source.type === "web" ? "player" : source.type}:${source.id}`
     }
 
     function backgroundKey(background: any) {
@@ -257,6 +270,82 @@
 
     function isProgram(source: SwitcherSource) {
         return sourceKey(source) === backgroundKey(programBackground)
+    }
+
+    function createWebSource(id: string, video: any): SwitcherSource | null {
+        if (!video?.id) return null
+
+        return {
+            id,
+            name: video.name || getWebSourceName(video.id),
+            section: "VDO.Ninja URLs",
+            type: "web",
+            icon: "input",
+            url: video.id,
+            payload: { id, type: "player", muted: false, loop: false, startAt: 0, ignoreLayer: true }
+        }
+    }
+
+    function addWebSource() {
+        webUrlError = ""
+        const url = normalizeWebUrl(webUrl)
+
+        if (!url) {
+            webUrlError = "Enter a valid VDO.Ninja view URL"
+            return
+        }
+
+        const existing = Object.entries($playerVideos).find(([, video]) => video.type === "web" && video.id === url)
+        const id = existing?.[0] || uid()
+        const sourceName = webName.trim() || getWebSourceName(url)
+
+        playerVideos.update((videos) => {
+            videos[id] = { ...(videos[id] || {}), id: url, name: sourceName, type: "web" }
+            return videos
+        })
+
+        previewSource = createWebSource(id, { id: url, name: sourceName, type: "web" })
+        webUrl = ""
+        webName = ""
+    }
+
+    function normalizeWebUrl(value: string) {
+        value = value.trim()
+        if (!value) return ""
+
+        if (!value.includes("://")) value = "https://" + value
+
+        try {
+            const parsedUrl = new URL(value)
+            if (!["http:", "https:"].includes(parsedUrl.protocol)) return ""
+            return parsedUrl.toString()
+        } catch (err) {
+            return ""
+        }
+    }
+
+    function getWebSourceName(url: string) {
+        try {
+            const parsedUrl = new URL(url)
+            const host = parsedUrl.hostname.replace("www.", "")
+            const viewId = parsedUrl.searchParams.get("view") || parsedUrl.searchParams.get("scene") || parsedUrl.searchParams.get("room") || ""
+
+            if (host.includes("vdo.ninja")) return viewId ? `VDO.Ninja ${viewId}` : "VDO.Ninja Camera"
+            return host
+        } catch {
+            return "Web Camera"
+        }
+    }
+
+    function formatWebUrl(url = "") {
+        try {
+            const parsedUrl = new URL(url)
+            const viewId = parsedUrl.searchParams.get("view") || parsedUrl.searchParams.get("scene") || parsedUrl.searchParams.get("room")
+            if (viewId) return `${parsedUrl.hostname.replace("www.", "")}/?view=${viewId}`
+            return parsedUrl.hostname.replace("www.", "")
+        } catch {
+            return url
+        }
     }
 </script>
 
@@ -294,6 +383,19 @@
         </div>
     </div>
 
+    <div class="web-url-panel">
+        <MaterialTextInput label="VDO.Ninja camera URL" value={webUrl} placeholder="https://vdo.ninja/?view=your-camera" pasteBtn on:input={(e) => (webUrl = e.detail)} on:change={(e) => (webUrl = e.detail)} on:keydown={(e) => e.key === "Enter" && addWebSource()} />
+        <MaterialTextInput label="Name" value={webName} placeholder="Camera 1" on:input={(e) => (webName = e.detail)} on:change={(e) => (webName = e.detail)} on:keydown={(e) => e.key === "Enter" && addWebSource()} />
+        <MaterialButton variant="contained" disabled={!webUrl.trim() || $outLocked} title="Add VDO.Ninja source" on:click={addWebSource}>
+            <Icon id="add" white />
+            <span>Add to Preview</span>
+        </MaterialButton>
+    </div>
+
+    {#if webUrlError}
+        <p class="url-error">{webUrlError}</p>
+    {/if}
+
     {#if visibleSourceCount}
         <div class="source-sections">
             {#each visibleSections as section (section.id)}
@@ -318,6 +420,13 @@
                                         <NDIStream screen={{ id: source.id, name: source.name }} on:click={(event) => selectPreview(source, event)} />
                                     {:else if source.type === "blackmagic"}
                                         <BmdStream screen={{ id: source.id, name: source.name, data: source.data }} on:click={(event) => selectPreview(source, event)} />
+                                    {:else if source.type === "web"}
+                                        <Card loaded label={source.name} title={source.url || source.name} icon="input" outlineColor={isPreview(source) ? "#16a34a" : isProgram(source) ? "#ef4444" : null} active={isProgram(source)} white on:click={(event) => selectPreview(source, event)}>
+                                            <div class="web-card">
+                                                <Icon id="input" size={2.6} white />
+                                                <p>{formatWebUrl(source.url)}</p>
+                                            </div>
+                                        </Card>
                                     {/if}
                                 </div>
                             {/each}
@@ -418,6 +527,26 @@
         white-space: nowrap;
     }
 
+    .web-url-panel {
+        display: grid;
+        grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) auto;
+        align-items: stretch;
+        gap: 8px;
+        padding: 0 4px;
+        width: 100%;
+    }
+
+    .web-url-panel :global(button) {
+        height: 50px;
+        white-space: nowrap;
+    }
+
+    .url-error {
+        margin: -2px 8px 0;
+        color: #ef4444;
+        font-size: 0.82em;
+    }
+
     .source-sections {
         display: flex;
         flex-direction: column;
@@ -468,6 +597,30 @@
         display: contents;
     }
 
+    .web-card {
+        width: 100%;
+        height: 100%;
+        min-height: 70px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 10px;
+        color: var(--text);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.01));
+    }
+
+    .web-card p {
+        margin: 0;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.74em;
+        opacity: 0.72;
+    }
+
     .empty-state {
         display: flex;
         flex-direction: column;
@@ -491,6 +644,10 @@
 
         .switcher-actions :global(button) {
             min-width: 0;
+        }
+
+        .web-url-panel {
+            grid-template-columns: 1fr;
         }
     }
 </style>

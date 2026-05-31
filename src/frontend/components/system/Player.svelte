@@ -2,12 +2,13 @@
     import { activeProject, activeShow, playerVideos, projects } from "../../stores"
     import Vimeo from "../drawer/player/Vimeo.svelte"
     import YouTube from "../drawer/player/YouTube.svelte"
+    import Website from "../slide/views/Website.svelte"
 
     export let id: string
     export let outputId = ""
     export let preview = false
 
-    let data: { type: "youtube" | "vimeo"; id: string; name?: string } | null = null
+    let data: { type: "youtube" | "vimeo" | "web"; id: string; name?: string } | null = null
     $: if ($activeShow && !$playerVideos[id]) getProjectData()
     function getProjectData() {
         data = $projects[$activeProject || ""]?.shows.find((a) => a.index === $activeShow?.index)?.data || null
@@ -37,4 +38,6 @@
     {/if}
 {:else if video?.type === "vimeo"}
     <Vimeo {outputId} id={video.id} bind:videoData bind:videoTime {startAt} {preview} on:loaded />
+{:else if video?.type === "web"}
+    <Website src={video.id} ratio={1} navigation={false} on:loaded />
 {/if}

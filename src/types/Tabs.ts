@@ -8,7 +8,7 @@ export interface Category {
     icon?: null | string
     path?: string
     id?: string
-    type?: "youtube" | "vimeo"
+    type?: "youtube" | "vimeo" | "web"
     mediaType?: "background" | "foreground"
     url?: string
     default?: boolean

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { createEventDispatcher } from "svelte"
     import { OUTPUT } from "../../../../types/Channels"
     import { currentWindow, outputs } from "../../../stores"
     import { send } from "../../../utils/request"
@@ -8,6 +9,8 @@
     export let src: string
     export let navigation = true
     export let clickable = false
+
+    const dispatch = createEventDispatcher()
 
     let webview: any
     export let ratio: number
@@ -63,6 +66,7 @@
         function setStyle() {
             if (!webview) return
             loaded = true
+            dispatch("loaded")
 
             if ($currentWindow !== "output") webview.setAudioMuted(true)
 
