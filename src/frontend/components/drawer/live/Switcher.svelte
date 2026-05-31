@@ -151,9 +151,10 @@
         .map(([id, video]) => createWebSource(id, video))
         .filter(Boolean) as SwitcherSource[]
 
+    $: cameraSwitcherSources = sortByName([...cameraSources, ...webSwitcherSources])
+
     $: sourceSections = [
-        { id: "web", title: "VDO.Ninja URLs", icon: "input", loading: false, sources: webSwitcherSources.filter(matchesSearch) },
-        { id: "cameras", title: "Cameras", icon: "camera", loading: loadingLocal, sources: cameraSources.filter(matchesSearch) },
+        { id: "cameras", title: "Cameras", icon: "camera", loading: loadingLocal, sources: cameraSwitcherSources.filter(matchesSearch) },
         { id: "screens", title: "Screens", icon: "screen", loading: loadingLocal, sources: screenSources.filter(matchesSearch) },
         { id: "windows", title: "Windows", icon: "window", loading: loadingLocal, sources: windowSources.filter(matchesSearch) },
         { id: "ndi", title: "NDI", icon: "ndi", loading: loadingNdi, sources: ndiSwitcherSources.filter(matchesSearch) },
@@ -279,7 +280,7 @@
         return {
             id,
             name: video.name || getWebSourceName(video.id),
-            section: "VDO.Ninja URLs",
+            section: "Cameras",
             type: "web",
             icon: "input",
             url: video.id,
