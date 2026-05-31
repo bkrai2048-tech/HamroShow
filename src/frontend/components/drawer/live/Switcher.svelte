@@ -14,6 +14,7 @@
     import Loader from "../../main/Loader.svelte"
     import { clearBackground } from "../../output/clear"
     import Center from "../../system/Center.svelte"
+    import SelectElem from "../../system/SelectElem.svelte"
     import Card from "../Card.svelte"
     import BmdStream from "./BMDStream.svelte"
     import Cam from "./Cam.svelte"
@@ -422,10 +423,12 @@
                                         <BmdStream screen={{ id: source.id, name: source.name, data: source.data }} on:click={(event) => selectPreview(source, event)} />
                                     {:else if source.type === "web"}
                                         <Card loaded label={source.name} title={source.url || source.name} icon="input" outlineColor={isPreview(source) ? "#16a34a" : isProgram(source) ? "#ef4444" : null} active={isProgram(source)} white on:click={(event) => selectPreview(source, event)}>
-                                            <div class="web-card">
-                                                <Icon id="input" size={2.6} white />
-                                                <p>{formatWebUrl(source.url)}</p>
-                                            </div>
+                                            <SelectElem id="player" data={source.id} fill draggable>
+                                                <div class="web-card">
+                                                    <Icon id="input" size={2.6} white />
+                                                    <p>{formatWebUrl(source.url)}</p>
+                                                </div>
+                                            </SelectElem>
                                         </Card>
                                     {/if}
                                 </div>
