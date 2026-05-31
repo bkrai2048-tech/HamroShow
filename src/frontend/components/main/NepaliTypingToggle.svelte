@@ -5,7 +5,7 @@
     const STORAGE_KEY = "hamroshow:nepaliTypingMode"
     const TOGGLE_SHORTCUT = "Ctrl+Alt+N"
 
-    const vowels = ["a = अ", "A/aa = आ", "i = इ", "I = ई", "u = उ", "U = ऊ", "e = ए", "ai = ऐ", "o = ओ", "au = औ", "aM = अं", "a~ = अँ", "a: = अः", "Ri = ऋ", "RI = ॠ"]
+    const vowels = ["a = अ", "A/aa = आ", "i = इ", "I/ii/ee = ई", "u = उ", "U/uu/oo = ऊ", "e = ए", "ai = ऐ", "o = ओ", "au = औ", "aM = अं", "a~ = अँ", "a: = अः", "Ri = ऋ", "RI = ॠ"]
     const special = ["NG / ng = ङ", "NY / yn = ञ", "jn / jna = ज्ञ", "kSh / x = क्ष", "tr = त्र", "rr = र् (half-ra)", "rry = र्य", "Ri = ृ (Matra)"]
     const consonants = [
         ["k = क्", "ka = क", "kh/K = ख्", "kha/Ka = ख"],
@@ -36,11 +36,13 @@
         ["kU", "कू", "ke", "के"],
         ["kai", "कै", "ko", "को"],
         ["kau", "कौ", "kaM", "कं"],
-        ["ka:", "कः", "kaM~", "कँ"]
+        ["ka:", "कः", "kaM~", "कँ"],
+        ["laai", "लाइ", "laaI/laaii", "लाई"],
+        ["ga'i", "गइ", "gaI/ga'I", "गई"]
     ]
     const matraExamples = ["gRi → गृ (ृ matra)", "gri → ग्रि (conjunct)", "gRiha → गृह", "saamaagree → सामाग्री", "kRipaa → कृपा", "vikree → विक्री", "mRityu → मृत्यु", "Ri (standalone) → ऋ"]
     const punctuation = [". → । (full stop)", "| → । (full stop)", ".. → . (literal dot)", "/ → /", "0-9 → ०-९", "लेवी ९:१० keeps : for Bible references"]
-    const wordExamples = ["gurung → गुरुङ", "angka → अङ्क", "angga → अङ्ग्", "anggrejI → अङ्ग्रेजी", "nepaalI → नेपाली", "haamro → हाम्रो", "gyo → ग्यो", "vidyaalaya → विद्यालय", "jnaana → ज्ञान", "gRihiNI → गृहिणी", "kRipaa → कृपा"]
+    const wordExamples = ["gurung → गुरुङ", "angka → अङ्क", "angga → अङ्ग्", "anggrejI → अङ्ग्रेजी", "nepaalI → नेपाली", "haamro → हाम्रो", "laai → लाइ", "gaI → गई", "gyo → ग्यो", "vidyaalaya → विद्यालय", "jnaana → ज्ञान", "gRihiNI → गृहिणी", "kRipaa → कृपा"]
 
     let enabled = false
     let tipsOpen = false
@@ -158,7 +160,7 @@
             <div class="tipsContent">
                 <div class="quickTip">
                     <b>Quick tip</b>
-                    <p>Use {TOGGLE_SHORTCUT} to switch English/Nepali typing. For Nepali full stop, type <code>.</code> or <code>|</code> to get <b>।</b>. Type <code>..</code> to insert a literal dot <b>.</b>.</p>
+                    <p>Use {TOGGLE_SHORTCUT} to switch English/Nepali typing. For Nepali full stop, type <code>.</code> or <code>|</code> to get <b>।</b>. Type <code>..</code> to insert a literal dot <b>.</b>. Use <code>'</code> between vowels when you need a separate vowel, like <code>ga'i</code> for <b>गइ</b>.</p>
                 </div>
 
                 <section class="tipSection">

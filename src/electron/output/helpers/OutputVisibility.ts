@@ -57,20 +57,28 @@ export class OutputVisibility {
 
     static getSecondDisplay(bounds: Rectangle) {
         const displays = screen.getAllDisplays()
-        if (displays.length !== 2) return bounds
+        if (displays.length < 2) return bounds
 
         const mainWindowBounds = mainWindow!.getBounds()
-        const amountCoveredByWindow = this.amountCovered(displays[1].bounds, mainWindowBounds)
+        const mainDisplay = screen.getDisplayMatching(mainWindowBounds)
+        const candidates = displays
+            .filter((display) => display.id !== mainDisplay.id)
+            .sort((a, b) => {
+                const coverage = this.amountCovered(a.bounds, mainWindowBounds) - this.amountCovered(b.bounds, mainWindowBounds)
+                if (coverage !== 0) return coverage
+                if (a.internal !== b.internal) return a.internal ? 1 : -1
+                return 0
+            })
 
-        let secondDisplay = displays[1]
-        if (amountCoveredByWindow > 0.5) secondDisplay = displays[0]
+        const secondDisplay = candidates[0]
+        if (!secondDisplay || this.amountCovered(secondDisplay.bounds, mainWindowBounds) > 0.5) return bounds
 
-        const newBounds = secondDisplay.bounds
+        const newBounds = { ...secondDisplay.bounds }
 
         // window zoomed (sometimes it's correct even with custom scaling, but not always)
         // if windows overlap then something is wrong with the scaling
         const scale = secondDisplay.scaleFactor || 1
-        if (scale !== 1 && this.amountCovered(displays[0].bounds, displays[1].bounds) > 0) {
+        if (scale !== 1 && displays.some((display) => display.id !== secondDisplay.id && this.amountCovered(newBounds, display.bounds) > 0)) {
             newBounds.width /= scale
             newBounds.height /= scale
         }

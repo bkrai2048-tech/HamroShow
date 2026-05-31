@@ -1,4 +1,5 @@
 const HALANT = "\u094D"
+const VOWEL_SEPARATOR = "'"
 
 const consonantMap: Record<string, string> = {
     k: "क",
@@ -121,6 +122,8 @@ function appendRomanizedChar(before: string, char: string) {
 
     if (char === ":" && shouldKeepLiteralColon(contextChar)) return before + ":"
     if (char === "~" && contextChar === "ं") return before.slice(0, -1) + "ँ"
+    if (contextChar === VOWEL_SEPARATOR && vowelMap[char] !== undefined) return before.slice(0, -1) + vowelMap[char]
+    if (char === VOWEL_SEPARATOR) return before + char
     if (before.endsWith("क्ष" + HALANT) && char === "h") return before
 
     if (hasHalant && prevConsonant && modifierMap[prevConsonant]?.[char]) {
@@ -134,6 +137,9 @@ function appendRomanizedChar(before: string, char: string) {
         return beforeR + (char === "I" ? "ॠ" : "ऋ")
     }
 
+    const combinedVowel = combineVisibleVowel(before, char)
+    if (combinedVowel !== null) return combinedVowel
+
     if (vowelMap[char] !== undefined) {
         if (hasHalant && prevConsonant) {
             if (char === "a") return before.slice(0, -1)
@@ -144,14 +150,11 @@ function appendRomanizedChar(before: string, char: string) {
             if (char === "i") return before + "ै"
             if (char === "u") return before + "ौ"
             if (char === "a") return before + "ा"
-            if (matraMap[char] !== undefined) return before + matraMap[char]
+            if (isModifierKey(char) && matraMap[char] !== undefined) return before + matraMap[char]
             return before + vowelMap[char]
         }
 
-        if (isDevanagariVowelOrMatra(contextChar) && matraMap[char] !== undefined) return before + matraMap[char]
-
-        if (contextChar === "अ" && char === "i") return before.slice(0, -1) + "ऐ"
-        if (contextChar === "अ" && char === "u") return before.slice(0, -1) + "औ"
+        if (isDevanagariVowelOrMatra(contextChar) && isModifierKey(char) && matraMap[char] !== undefined) return before + matraMap[char]
 
         return before + vowelMap[char]
     }
@@ -164,6 +167,38 @@ function appendRomanizedChar(before: string, char: string) {
     return before + char
 }
 
+function combineVisibleVowel(before: string, char: string) {
+    const contextChar = before[before.length - 1] || ""
+
+    if (contextChar === "अ") {
+        if (char === "a" || char === "A") return before.slice(0, -1) + "आ"
+        if (char === "i") return before.slice(0, -1) + "ऐ"
+        if (char === "u") return before.slice(0, -1) + "औ"
+    }
+
+    if (contextChar === "इ" && (char === "i" || char === "I")) return before.slice(0, -1) + "ई"
+    if (contextChar === "ए" && char === "e") return before.slice(0, -1) + "ई"
+    if (contextChar === "उ" && (char === "u" || char === "U")) return before.slice(0, -1) + "ऊ"
+    if (contextChar === "ओ" && char === "o") return before.slice(0, -1) + "ऊ"
+
+    if (contextChar === "ि" && (char === "i" || char === "I")) return before.slice(0, -1) + "ी"
+    if (contextChar === "े" && char === "e") return before.slice(0, -1) + "ी"
+    if (contextChar === "ु" && (char === "u" || char === "U")) return before.slice(0, -1) + "ू"
+    if (contextChar === "ो" && char === "o") return before.slice(0, -1) + "ू"
+
+    if (contextChar === "ा") {
+        if (char === "i") return before + "इ"
+        if (char === "I") return before + "ई"
+    }
+
+    if (contextChar === "आ") {
+        if (char === "i") return before + "इ"
+        if (char === "I") return before + "ई"
+    }
+
+    return null
+}
+
 function isDevanagariConsonant(char: string) {
     if (!char) return false
     const code = char.charCodeAt(0)
@@ -174,6 +209,10 @@ function isDevanagariVowelOrMatra(char: string) {
     if (!char) return false
     const code = char.charCodeAt(0)
     return (code >= 0x0904 && code <= 0x0914) || (code >= 0x093E && code <= 0x094C) || char === "ं" || char === "ँ" || char === "ः" || isDevanagariConsonant(char)
+}
+
+function isModifierKey(char: string) {
+    return char === "M" || char === ":" || char === "~"
 }
 
 function shouldKeepLiteralColon(contextChar: string) {
