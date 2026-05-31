@@ -154,8 +154,18 @@ function getMainData() {
 async function getStoredData() {
     sendMainMultiple([Main.SYNCED_SETTINGS, Main.STAGE, Main.PROJECTS, Main.OVERLAYS, Main.TEMPLATES, Main.EVENTS, Main.MEDIA, Main.THEMES, Main.DRIVE_API_KEY, Main.HISTORY, Main.CACHE, Main.USAGE])
 
-    await waitUntilValueIsDefined(() => get(loadedState).includes("synced_settings"), 200, 8000)
+    const syncedSettingsLoaded = await waitUntilValueIsDefined(() => get(loadedState).includes("synced_settings"), 200, 8000)
+    if (!syncedSettingsLoaded) console.warn("Timed out waiting for synced settings; continuing startup.")
+
     sendMain(Main.SETTINGS)
+
+    setTimeout(() => {
+        if (get(loaded)) return
+
+        console.warn("Timed out waiting for settings; forcing main UI startup.")
+        loaded.set(true)
+        window.api.send("LOADED")
+    }, 10000)
 
     // LOAD SHOWS FROM FOLDER
     sendMain(Main.SHOWS)

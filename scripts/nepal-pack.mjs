@@ -10,6 +10,16 @@ const KJV_JSON_URL = "https://raw.githubusercontent.com/thiagobodruk/bible/maste
 const NCS_BASE_URL = "https://www.nepalichristiansongs.com";
 
 const DEFAULT_OUTPUT_DIR = path.resolve("dist", "nepali-church-pack");
+const DEFAULT_HYMN_TEXT_BOX_STYLE = "top:120px;left:160px;height:840px;width:1600px;";
+const DEFAULT_HYMN_TEXT_STYLE = "font-size: 78px;";
+const DEFAULT_HYMN_TRANSITION = { type: "fade", duration: 500, easing: "sine" };
+
+const HYMN_CATEGORIES = {
+  ne_bhajan: { name: "Bhajan / भजन", icon: "song" },
+  ne_chorus: { name: "Chorus / कोरस", icon: "song" },
+  ne_bal_sangati: { name: "Bal Sangati / बाल सङ्गति", icon: "song" },
+  ne_new_songs: { name: "New Songs / नयाँ गीत", icon: "song" }
+};
 
 const BOOKS = [
   { slug: "GEN", en: "Genesis", ne: "उत्पत्ति" },
@@ -117,6 +127,7 @@ async function main() {
     console.log(`[install] bibles copied: ${result.bibles}`);
     console.log(`[install] shows copied: ${result.shows}`);
     console.log(`[install] scriptures updated: ${result.scriptures}`);
+    console.log(`[install] categories updated: ${result.categories}`);
   }
 }
 
@@ -243,6 +254,7 @@ async function installPack({ outDir, dataRoot, includeShows }) {
 
   let copiedShows = 0;
   if (includeShows) {
+    await removeExistingNepaliPackShows(targetShows);
     const showFiles = await safeReadDir(sourceShows);
     for (const name of showFiles.filter((a) => a.toLowerCase().endsWith(".show"))) {
       await fs.copyFile(path.join(sourceShows, name), path.join(targetShows, name));
@@ -250,12 +262,52 @@ async function installPack({ outDir, dataRoot, includeShows }) {
     }
   }
 
-  const scriptureCount = await upsertScriptures(path.join(configDir, "settings_synced.json"));
+  const settingsCounts = await upsertNepalSettings(path.join(configDir, "settings_synced.json"));
 
-  return { bibles: copiedBibles, shows: copiedShows, scriptures: scriptureCount };
+  return { bibles: copiedBibles, shows: copiedShows, ...settingsCounts };
 }
 
-async function upsertScriptures(settingsPath) {
+async function removeExistingNepaliPackShows(targetShows) {
+  const existingFiles = await safeReadDir(targetShows);
+
+  for (const name of existingFiles.filter((a) => a.toLowerCase().endsWith(".show"))) {
+    const filePath = path.join(targetShows, name);
+    let payload;
+    try {
+      payload = JSON.parse(await fs.readFile(filePath, "utf8"));
+    } catch {
+      continue;
+    }
+
+    const id = String(payload?.[0] || "");
+    const show = payload?.[1] || {};
+    if (show?.origin === "ncs_nepal" || id.startsWith("ncs_song_")) {
+      await removeFileWithRetry(filePath);
+    }
+  }
+}
+
+async function removeFileWithRetry(filePath, attempts = 8) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      await fs.unlink(filePath);
+      return;
+    } catch (err) {
+      if (!isTransientFileLock(err) || attempt === attempts) throw err;
+      await delay(250 * attempt);
+    }
+  }
+}
+
+function isTransientFileLock(err) {
+  return ["EBUSY", "EPERM", "ENOTEMPTY"].includes(err?.code);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function upsertNepalSettings(settingsPath) {
   let settings = {};
   try {
     settings = JSON.parse(await fs.readFile(settingsPath, "utf8"));
@@ -265,11 +317,19 @@ async function upsertScriptures(settingsPath) {
 
   if (!settings.scriptures || typeof settings.scriptures !== "object") settings.scriptures = {};
 
-  settings.scriptures.ne_np_nnrv = { id: "ne_np_nnrv", name: "NNRV Nepali" };
+  settings.scriptures.ne_np_nnrv = { id: "ne_np_nnrv", name: "NNRV Nepali", customName: "NNRV Nepali / नेपाली बाइबल" };
   settings.scriptures.en_kjv = { id: "en_kjv", name: "KJV English" };
 
+  if (!settings.categories || typeof settings.categories !== "object") settings.categories = {};
+  for (const [id, category] of Object.entries(HYMN_CATEGORIES)) {
+    settings.categories[id] = { ...category, ...(settings.categories[id] || {}) };
+  }
+
   await fs.writeFile(settingsPath, JSON.stringify(settings, null, 2));
-  return Object.keys(settings.scriptures).length;
+  return {
+    scriptures: Object.keys(settings.scriptures).length,
+    categories: Object.keys(settings.categories).length
+  };
 }
 
 async function buildNnrvBible() {
@@ -366,7 +426,33 @@ async function buildNcsHymns(letters) {
     if (!unique.has(hymn.id)) unique.set(hymn.id, hymn);
   }
 
+  return dedupeHymnsByContent(Array.from(unique.values()));
+}
+
+function dedupeHymnsByContent(hymns) {
+  const ordered = [...hymns].sort((a, b) => getSourceNumber(a) - getSourceNumber(b));
+  const unique = new Map();
+
+  for (const hymn of ordered) {
+    const identity = getHymnContentIdentity(hymn);
+    if (!unique.has(identity)) unique.set(identity, hymn);
+  }
+
   return Array.from(unique.values());
+}
+
+function getHymnContentIdentity(hymn) {
+  const numberInfo = getHymnNumberInfo(hymn);
+  return [
+    numberInfo.category,
+    numberInfo.originalCode || "",
+    normalizeWhitespace(hymn.title).toLowerCase(),
+    normalizeLyrics(hymn.lyrics).toLowerCase()
+  ].join("|");
+}
+
+function getSourceNumber(hymn) {
+  return Number.parseInt(String(hymn.sourceId || "").replace(/^song/i, ""), 10) || Number.MAX_SAFE_INTEGER;
 }
 
 function parseNcsPage(html, letter) {
@@ -413,36 +499,39 @@ function parseNcsPage(html, letter) {
 function toHamroShowSong(hymn) {
   const now = Date.now();
   const layoutId = shortId(`layout:${hymn.id}`);
+  const hymnNumber = getHymnNumberInfo(hymn);
+  const romanizedTitle = titleCase(compactRomanized(romanizeNepali(hymn.title)));
+  const romanizedSearchText = buildRomanizedSearchText(hymn, hymnNumber);
 
-  const stanzas = splitStanzas(hymn.lyrics);
+  const sections = parseHymnSections(hymn.lyrics);
   const slides = {};
   const layoutSlides = [];
 
-  for (let i = 0; i < stanzas.length; i++) {
-    const lines = stanzas[i]
-      .split("\n")
+  for (let i = 0; i < sections.length; i++) {
+    const section = sections[i];
+    const lines = section.lines
       .map((line) => normalizeWhitespace(line))
       .filter(Boolean)
-      .map((line) => ({ align: "", text: [{ style: "", value: line }], chords: [] }));
+      .map((line) => ({ align: "center", text: [{ style: DEFAULT_HYMN_TEXT_STYLE, value: line }], chords: [] }));
 
     if (!lines.length) continue;
 
     const slideId = shortId(`${hymn.id}:slide:${i + 1}`);
     slides[slideId] = {
-      group: `V${i + 1}`,
-      color: null,
+      group: section.group,
+      color: section.type === "chorus" ? "#f2c14e" : null,
       settings: {},
-      notes: "",
+      notes: section.label,
       items: [
         {
-          style: "default",
-          align: "",
+          style: DEFAULT_HYMN_TEXT_BOX_STYLE,
+          align: "center",
           textFit: "shrinkToFit",
           lines
         }
       ]
     };
-    layoutSlides.push({ id: slideId });
+    layoutSlides.push({ id: slideId, transition: { ...DEFAULT_HYMN_TRANSITION } });
   }
 
   // Fallback to one empty slide when parsing produced no stanza blocks.
@@ -455,14 +544,14 @@ function toHamroShowSong(hymn) {
       notes: "",
       items: [
         {
-          style: "default",
-          align: "",
+          style: DEFAULT_HYMN_TEXT_BOX_STYLE,
+          align: "center",
           textFit: "shrinkToFit",
-          lines: [{ align: "", text: [{ style: "", value: hymn.title }], chords: [] }]
+          lines: [{ align: "center", text: [{ style: DEFAULT_HYMN_TEXT_STYLE, value: hymn.title }], chords: [] }]
         }
       ]
     };
-    layoutSlides.push({ id: slideId });
+    layoutSlides.push({ id: slideId, transition: { ...DEFAULT_HYMN_TRANSITION } });
   }
 
   const notes = [
@@ -477,11 +566,21 @@ function toHamroShowSong(hymn) {
   return {
     name: hymn.title,
     origin: "ncs_nepal",
-    category: null,
-    quickAccess: { number: hymn.sourceId.replace(/^song/i, "") },
+    category: hymnNumber.category,
+    quickAccess: {
+      number: hymnNumber.displayNumber,
+      originalNumber: hymnNumber.originalNumber,
+      categoryNumber: hymnNumber.originalNumber,
+      paddedNumber: hymnNumber.paddedNumber,
+      sourceNumber: hymnNumber.sourceNumber,
+      originalCode: hymnNumber.originalCode,
+      romanizedTitle,
+      searchText: romanizedSearchText
+    },
     settings: { activeLayout: layoutId, template: null },
     timestamps: { created: now, modified: now, used: null },
     meta: {
+      number: hymnNumber.displayNumber,
       title: hymn.title,
       author: hymn.authors || "",
       copyright: "Nepali Christian Songs (NCS)"
@@ -498,13 +597,256 @@ function toHamroShowSong(hymn) {
   };
 }
 
-function splitStanzas(lyrics) {
-  const blocks = String(lyrics || "")
-    .replace(/\r/g, "")
-    .split(/\n\s*\n+/)
-    .map((block) => block.trim())
-    .filter(Boolean);
-  return blocks.length ? blocks : [String(lyrics || "").trim()];
+function buildRomanizedSearchText(hymn, hymnNumber = getHymnNumberInfo(hymn)) {
+  return unique([
+    hymnNumber.displayNumber,
+    hymnNumber.originalNumber,
+    hymnNumber.paddedNumber,
+    hymnNumber.sourceNumber,
+    hymnNumber.originalCode,
+    ...romanizedVariants(hymn.title),
+    ...romanizedVariants(hymn.lyrics),
+    hymn.details,
+    hymn.authors
+  ]).join("\n");
+}
+
+function romanizedVariants(value) {
+  const basic = romanizeNepali(value);
+  return unique([basic, compactRomanized(basic)]).filter(Boolean);
+}
+
+function compactRomanized(value) {
+  return normalizeWhitespace(String(value || ""))
+    .replace(/([bcdfghjklmnpqrstvwxyz])a(?=w)/gi, "$1")
+    .replace(/(kh|gh|chh|jh|th|dh|ph|bh)a\b/gi, "$1")
+    .replace(/([bcdfgjklmnpqrstvwxyz])a\b/gi, "$1");
+}
+
+function titleCase(value) {
+  return normalizeWhitespace(value).replace(/\b[a-z]/g, (match) => match.toUpperCase());
+}
+
+function unique(values) {
+  return [...new Set(values.map((value) => normalizeWhitespace(value)).filter(Boolean))];
+}
+
+function romanizeNepali(input) {
+  const consonants = {
+    "क": "k", "ख": "kh", "ग": "g", "घ": "gh", "ङ": "ng",
+    "च": "ch", "छ": "chh", "ज": "j", "झ": "jh", "ञ": "ny",
+    "ट": "t", "ठ": "th", "ड": "d", "ढ": "dh", "ण": "n",
+    "त": "t", "थ": "th", "द": "d", "ध": "dh", "न": "n",
+    "प": "p", "फ": "ph", "ब": "b", "भ": "bh", "म": "m",
+    "य": "y", "र": "r", "ल": "l", "व": "w",
+    "श": "sh", "ष": "sh", "स": "s", "ह": "h",
+    "क़": "k", "ख़": "kh", "ग़": "g", "ज़": "j", "ड़": "d", "ढ़": "dh", "फ़": "ph", "य़": "y"
+  };
+  const independentVowels = {
+    "अ": "a", "आ": "a", "इ": "i", "ई": "i", "उ": "u", "ऊ": "u",
+    "ऋ": "ri", "ए": "e", "ऐ": "ai", "ओ": "o", "औ": "au"
+  };
+  const vowelMarks = {
+    "ा": "a", "ि": "i", "ी": "i", "ु": "u", "ू": "u", "ृ": "ri",
+    "े": "e", "ै": "ai", "ो": "o", "ौ": "au", "ॅ": "e", "ॉ": "o"
+  };
+  const symbols = { "ं": "n", "ः": "", "ँ": "", "ऽ": "", "।": " ", "॥": " " };
+  const digits = { "०": "0", "१": "1", "२": "2", "३": "3", "४": "4", "५": "5", "६": "6", "७": "7", "८": "8", "९": "9" };
+
+  let output = "";
+  const text = String(input || "");
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (consonants[char]) {
+      output += consonants[char];
+      if (next === "्") {
+        i += 1;
+      } else if (vowelMarks[next]) {
+        output += vowelMarks[next];
+        i += 1;
+      } else {
+        output += "a";
+      }
+      continue;
+    }
+
+    if (independentVowels[char]) output += independentVowels[char];
+    else if (vowelMarks[char]) output += vowelMarks[char];
+    else if (symbols[char] !== undefined) output += symbols[char];
+    else if (digits[char]) output += digits[char];
+    else output += char;
+  }
+
+  return normalizeWhitespace(output);
+}
+
+function getHymnCategory(hymn) {
+  const codes = parseHymnCodes(hymn.details);
+
+  return getHymnCategoryFromCodes(codes);
+}
+
+function getHymnCategoryFromCodes(codes) {
+  if (codes.some((code) => code.type === "ch")) return "ne_bal_sangati";
+  if (codes.some((code) => code.prefix === "kb" && code.type === "c")) return "ne_chorus";
+  if (codes.some((code) => code.prefix === "kb" && code.type === "s")) return "ne_bhajan";
+
+  return "ne_new_songs";
+}
+
+function getHymnNumberInfo(hymn) {
+  const sourceNumber = hymn.sourceId.replace(/^song/i, "");
+  const codes = parseHymnCodes(hymn.details);
+  const category = getHymnCategoryFromCodes(codes);
+  const primaryCode = getPrimaryHymnCode(codes, category);
+  const originalNumber = stripLeadingZeros(primaryCode?.number || "");
+  const displayNumber = shouldUseOriginalHymnNumber(category, primaryCode) ? originalNumber : sourceNumber;
+
+  return {
+    category,
+    displayNumber,
+    originalNumber: shouldUseOriginalHymnNumber(category, primaryCode) ? originalNumber || undefined : undefined,
+    paddedNumber: shouldUseOriginalHymnNumber(category, primaryCode) ? primaryCode?.number || undefined : undefined,
+    sourceNumber,
+    originalCode: primaryCode?.raw || undefined
+  };
+}
+
+function getPrimaryHymnCode(codes, category) {
+  if (category === "ne_bal_sangati") return codes.find((code) => code.prefix === "kb" && code.type === "ch" && code.number) || codes.find((code) => code.type === "ch" && code.number);
+  if (category === "ne_chorus") return codes.find((code) => code.prefix === "kb" && code.type === "c" && code.number);
+  if (category === "ne_bhajan") return codes.find((code) => code.prefix === "kb" && code.type === "s" && code.number);
+
+  return codes.find((code) => code.number);
+}
+
+function shouldUseOriginalHymnNumber(category, code) {
+  if (!code?.number) return false;
+  if (category === "ne_bhajan") return code.prefix === "kb" && code.type === "s";
+  if (category === "ne_chorus") return code.prefix === "kb" && code.type === "c";
+  if (category === "ne_bal_sangati") return code.prefix === "kb" && code.type === "ch";
+  return false;
+}
+
+function stripLeadingZeros(value) {
+  return String(value || "").replace(/^0+(?=\d)/, "");
+}
+
+function parseHymnCodes(details) {
+  return [...String(details || "").matchAll(/\b([a-z0-9]+):([a-z]+)(\d*)/gi)].map((match) => {
+    const prefix = String(match[1] || "").toLowerCase();
+    const type = String(match[2] || "").toLowerCase();
+    const number = String(match[3] || "");
+    return { prefix, type, number, raw: `${prefix}:${type}${number}` };
+  });
+}
+
+function parseHymnSections(lyrics) {
+  const sections = [];
+  let verseCounter = 1;
+  let current = createHymnSection(`Verse ${verseCounter}`, "verse", `V${verseCounter}`);
+  verseCounter += 1;
+
+  const commit = () => {
+    if (current.lines.length) sections.push(current);
+  };
+
+  const startNextVerse = () => {
+    current = createHymnSection(`Verse ${verseCounter}`, "verse", `V${verseCounter}`);
+    verseCounter += 1;
+  };
+
+  const rawLines = String(lyrics || "").replace(/\r/g, "").split("\n");
+  for (const rawLine of rawLines) {
+    const line = normalizeWhitespace(normalizeNepaliDigits(rawLine));
+
+    if (!line) {
+      if (current.lines.length) {
+        commit();
+        startNextVerse();
+      }
+      continue;
+    }
+
+    const marker = extractHymnSectionMarker(line, verseCounter);
+    if (marker) {
+      commit();
+      current = createHymnSection(marker.label, marker.type, marker.group);
+      if (marker.verseCounter) verseCounter = Math.max(verseCounter, marker.verseCounter);
+      if (marker.text) current.lines.push(marker.text);
+      continue;
+    }
+
+    current.lines.push(line);
+  }
+
+  commit();
+
+  if (!sections.length) {
+    const fallbackLines = String(lyrics || "")
+      .split("\n")
+      .map((line) => normalizeWhitespace(line))
+      .filter(Boolean);
+    sections.push(createHymnSection("Verse 1", "verse", "V1", fallbackLines.length ? fallbackLines : [" "]));
+  }
+
+  return sections;
+}
+
+function createHymnSection(label, type, group, lines = []) {
+  return { label, type, group, lines };
+}
+
+function extractHymnSectionMarker(line, verseCounter) {
+  const normalized = line.replace(/^\s*[\[(]\s*/, "").replace(/\s*[\])]\s*$/, "").trim();
+  const bracketPrefix = line.replace(/^\s*[\[(]\s*([^\])]+)\s*[\])]\s*/, "$1 ").trim();
+  const candidates = [...new Set([normalized, bracketPrefix, line])];
+
+  for (const candidate of candidates) {
+    const chorusMatch = candidate.match(/^(?:को\.?|कोरस\.?|chorus\.?|refrain\.?|स्थायी|मुखडा)(?:\s*[0-9]+)?\s*(?::|-|,)?\s*(.*)$/i);
+    if (chorusMatch) {
+      return { label: "Chorus", type: "chorus", group: "C", text: (chorusMatch[1] || "").trim() };
+    }
+
+    const bridgeMatch = candidate.match(/^(?:bridge\.?|ब्रिज\.?)\s*(?::|-|,)?\s*(.*)$/i);
+    if (bridgeMatch) {
+      return { label: "Bridge", type: "bridge", group: "B", text: (bridgeMatch[1] || "").trim() };
+    }
+
+    const verseWordMatch = candidate.match(/^(?:verse\.?|v\.?|अन्तरा|भर्स|पद)\s*([0-9]+)?\s*(?::|-|,|\.)?\s*(.*)$/i);
+    if (verseWordMatch) {
+      const verseNo = Number(verseWordMatch[1] || verseCounter);
+      return {
+        label: `Verse ${verseNo}`,
+        type: "verse",
+        group: `V${verseNo}`,
+        text: (verseWordMatch[2] || "").trim(),
+        verseCounter: verseNo + 1
+      };
+    }
+
+    const verseNumberMatch = candidate.match(/^([0-9]+)\.(?:\s+)?(.*)$/);
+    if (verseNumberMatch) {
+      const verseNo = Number(verseNumberMatch[1] || verseCounter);
+      return {
+        label: `Verse ${verseNo}`,
+        type: "verse",
+        group: `V${verseNo}`,
+        text: (verseNumberMatch[2] || "").trim(),
+        verseCounter: verseNo + 1
+      };
+    }
+  }
+
+  return null;
+}
+
+function normalizeNepaliDigits(value) {
+  const digits = { "०": "0", "१": "1", "२": "2", "३": "3", "४": "4", "५": "5", "६": "6", "७": "7", "८": "8", "९": "9" };
+  return String(value || "").replace(/[०-९]/g, (digit) => digits[digit] || digit);
 }
 
 function normalizeLyrics(input) {
@@ -519,6 +861,7 @@ function normalizeLyrics(input) {
 function normalizeWhitespace(input) {
   return String(input || "")
     .replace(/\u00a0/g, " ")
+    .replace(/[\u200b-\u200d\ufeff]/g, "")
     .replace(/[ \t]+/g, " ")
     .trim();
 }

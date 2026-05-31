@@ -81,7 +81,7 @@
         if ($activePage === "edit") drawerOpenedInEdit.set(true)
 
         // if drawer is closed when searching, set category to "all"
-        if (e === null && ["shows", "overlays", "templates", "media", "audio"].includes($activeDrawerTab)) {
+        if (e === null && ["shows", "hymns", "overlays", "templates", "media", "audio"].includes($activeDrawerTab)) {
             drawerTabsData.update((a) => {
                 a[$activeDrawerTab].activeSubTab = "all"
                 return a
@@ -151,7 +151,7 @@
             if (!$selected?.id && !$activeEdit.items.length) click(null)
         } else if (e.key === "Enter") {
             if (document.activeElement !== searchElem || !searchValue.length || !firstMatch || !$activeProject || $focusMode) return
-            if ($activeDrawerTab !== "shows") return
+            if (!["shows", "hymns"].includes($activeDrawerTab)) return
 
             let match = $activeShow?.data?.searchInput === true ? { id: $activeShow.id } : firstMatch
 

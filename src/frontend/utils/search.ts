@@ -3,6 +3,7 @@ import type { ShowList } from "../../types/Show"
 import { sortObjectNumbers } from "../components/helpers/array"
 import { similarity } from "../converters/txt"
 import { categories, drawerTabsData, textCache } from "../stores"
+import { getHymnDisplayName, isNepaliHymn } from "./hymns"
 
 const specialChars = /[.,\/#!?$%\^&\*;:{}=\-_'"´`~()]/g
 export function formatSearch(value: string, removeSpaces = false) {
@@ -12,9 +13,24 @@ export function formatSearch(value: string, removeSpaces = false) {
         .replace(specialChars, "")
         .normalize("NFD")
         .replace(/\p{Diacritic}/gu, "")
+        .replace(/[\u200b-\u200d\ufeff]/g, "")
     if (removeSpaces) newValue = newValue.replace(/\s+/g, "")
 
     return newValue
+}
+
+function formatSearchVariants(value: string, removeSpaces = false) {
+    const formatted = formatSearch(value, false)
+    const compact = compactRomanizedSearch(formatted)
+    const variants = [formatted, compact].map((variant) => (removeSpaces ? variant.replace(/\s+/g, "") : variant))
+    return [...new Set(variants.filter(Boolean))]
+}
+
+function compactRomanizedSearch(value: string) {
+    return value
+        .replace(/([bcdfghjklmnpqrstvwxyz])a(?=w)/gi, "$1")
+        .replace(/(kh|gh|chh|jh|th|dh|ph|bh)a\b/gi, "$1")
+        .replace(/([bcdfgjklmnpqrstvwxyz])a\b/gi, "$1")
 }
 
 export function tokenize(str: string): string[] {
@@ -57,49 +73,63 @@ export function showSearchFilter(searchValue: string, show: ShowList) {
     // WIP tag search?
 
     // Priority 0: Song Number Exact Match (supports alphanumeric like "MP133")
-    const songNumber: string = show.quickAccess?.number || ""
-    const formattedSongNumber = formatSearch(songNumber, true)
-    const formattedSearchValue = formatSearch(searchValue, true)
-    if (songNumber && formattedSongNumber === formattedSearchValue) return 100
+    const songNumbers = getShowNumbers(show)
+    const songNumber = songNumbers[0] || ""
+    const formattedSongNumbers = songNumbers.map((number) => formatSearch(number, true))
+    const formattedSearchValues = formatSearchVariants(searchValue, true)
+    const formattedSearchWordValues = formatSearchVariants(searchValue, false)
+    const formattedSearchValue = formattedSearchValues[0] || ""
+    if (!formattedSearchValue) return 0
+    if (formattedSongNumbers.some((number) => formattedSearchValues.includes(number))) return 100
     // Priority 0.5: CCLI Exact Match
     const songId = show.quickAccess?.metadata?.CCLI || ""
     if (songId.toString() === searchValue) return 100
 
-    const showName = formatSearch(show.name, true)
-    const showNameWithNumber = songNumber + showName
+    const displayName = isNepaliHymn(show) ? getHymnDisplayName(show) : show.name
+    const extraSearchText = getExtraSearchText(show)
+    const showNameFields = [displayName, show.quickAccess?.romanizedTitle, show.quickAccess?.englishTitle]
+        .filter((value) => typeof value === "string" && value.trim().length)
+        .flatMap((value) => formatSearchVariants(value, true))
+    const showName = showNameFields[0] || ""
+    const showNameWithNumber = (formattedSongNumbers[0] || "") + showName
+    const showNamesWithNumber = showNameFields.flatMap((name) => formattedSongNumbers.map((number) => number + name))
 
     // Priority 1: Title Exact Match
-    if (formattedSearchValue === showName || formattedSearchValue === showNameWithNumber) return 100
+    if (showNameFields.some((name) => formattedSearchValues.includes(name)) || showNamesWithNumber.some((name) => formattedSearchValues.includes(name))) return 100
 
     // Priority 1.25: Song Number Starts With Match
     // if (songNumber && formattedSongNumber.startsWith(formattedSearchValue)) return 100
 
     // Priority 1.5: Title Word Start Match
-    if (showName.startsWith(formattedSearchValue)) return 100
+    if (showNameFields.some((name) => formattedSearchValues.some((search) => name.startsWith(search)))) return 100
 
-    const cache = get(textCache)[show.id] || ""
+    const cache = [get(textCache)[show.id] || "", extraSearchText].filter(Boolean).join("\n")
 
     // Multi-word search - check if ALL words appear in content
-    const multiWordMatchScore = calculateMultiWordMatch(searchValue, cache, show.name)
+    const multiWordMatchScore = calculateMultiWordMatch(searchValue, cache, displayName)
 
     // Priority 2: Content Includes Percentage Match
-    const contentIncludesMatchScore = calculateContentIncludesScore(cache, searchValue) // + calculateContentIncludesScore(cache, searchValue, true)
+    const contentIncludesMatchScore = maxScore(formattedSearchWordValues.map((search) => calculateContentIncludesScore(cache, search))) // + calculateContentIncludesScore(cache, searchValue, true)
 
     // Priority 3: Title Word-for-Word Match
-    const titleWordMatch = matchWords(showNameWithNumber, searchValue)
+    const titleWordMatch = maxScore(formattedSearchWordValues.flatMap((search) => [showNameWithNumber, ...showNamesWithNumber].map((name) => matchWords(name, search))))
     const titleIncludesMatchScore = titleWordMatch * 0.5 * 100 // max 50%
 
     // Priority 4: Title Letter-for-Letter Match
-    const titleSimilarity = similarity(showNameWithNumber, removeShortWords(formatSearch(searchValue, true)))
+    const titleSimilarity = maxScore(formattedSearchValues.flatMap((search) => [showNameWithNumber, ...showNamesWithNumber].map((name) => similarity(name, removeShortWords(search)))))
     const titleSimilarityMatchScore = titleSimilarity * 0.3 * 100 // max 30%
 
     // Priority 5: Content Word-for-Word Match
     let contentWordMatchScore = 0
     if (cache) {
         const formattedCache = formatSearch(cache, true)
-        const wordMatchCount = matchWords(formattedCache, searchValue)
-        const wordMatchCountExtra = matchWords(formattedCache, removeShortWords(searchValue))
-        contentWordMatchScore = Math.min(wordMatchCount, 100) * 0.03 + Math.min(wordMatchCountExtra, 100) * 0.07 // max 10%
+        contentWordMatchScore = maxScore(
+            formattedSearchWordValues.map((search) => {
+                const wordMatchCount = matchWords(formattedCache, search)
+                const wordMatchCountExtra = matchWords(formattedCache, removeShortWords(search))
+                return Math.min(wordMatchCount, 100) * 0.03 + Math.min(wordMatchCountExtra, 100) * 0.07
+            })
+        ) // max 10%
     }
 
     // Priority 6: Content Letter-for-Letter Match
@@ -111,6 +141,21 @@ export function showSearchFilter(searchValue: string, show: ShowList) {
 
     const combinedScore = multiWordMatchScore + contentIncludesMatchScore + titleIncludesMatchScore + titleSimilarityMatchScore + contentWordMatchScore
     return combinedScore >= 100 ? 99 : combinedScore < 3 ? 0 : combinedScore
+}
+
+function maxScore(values: number[]) {
+    return Math.max(0, ...values.filter((value) => Number.isFinite(value)))
+}
+
+function getExtraSearchText(show: ShowList) {
+    const values = [...getShowNumbers(show), show.quickAccess?.originalCode, show.quickAccess?.categoryCode, show.quickAccess?.searchText, show.quickAccess?.romanizedLyrics, show.quickAccess?.romanizedTitle, show.quickAccess?.englishTitle]
+    return values.flatMap((value) => (Array.isArray(value) ? value : [value])).filter((value) => typeof value === "string" && value.trim().length).join("\n")
+}
+
+function getShowNumbers(show: ShowList) {
+    const quickAccess = show.quickAccess || {}
+    const values = [quickAccess.number, quickAccess.originalNumber, quickAccess.categoryNumber, quickAccess.paddedNumber, quickAccess.sourceNumber]
+    return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))]
 }
 
 function calculateMultiWordMatch(searchValue: string, cache: string, showName: string): number {

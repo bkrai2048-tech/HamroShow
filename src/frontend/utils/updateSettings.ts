@@ -98,7 +98,10 @@ import { setLanguage } from "./language"
 import { send } from "./request"
 
 export function updateSyncedSettings(data: any) {
-    if (!data || !Object.keys(data).length) return
+    if (!data || !Object.keys(data).length) {
+        loadedState.set([...get(loadedState), "synced_settings"])
+        return
+    }
 
     // pre v1.6.1 (triggers are now actions)
     data = convertTriggersToActions(data)
@@ -112,6 +115,8 @@ export function updateSyncedSettings(data: any) {
 }
 
 export function updateSettings(data: any) {
+    if (!data) data = {}
+
     // pre v0.8.2 (data contains SaveListSyncedSettings, but it gets overwritten and removed on first save)
 
     // pre v1.6.1 (equalizerConfig was not in audioEffects)

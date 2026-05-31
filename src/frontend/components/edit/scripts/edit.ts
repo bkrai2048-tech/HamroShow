@@ -59,6 +59,7 @@ export function parseShadowValue(value): string[] {
 
 const drawerPages: { [key: string]: DrawerTabIds } = {
     shows: "shows",
+    hymns: "hymns",
     media: "media",
     audio: "audio",
     overlays: "overlays",

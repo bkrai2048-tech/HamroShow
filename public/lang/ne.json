@@ -277,6 +277,8 @@
     },
     "tabs": {
         "shows": "Shows (शोहरू)",
+        "hymns": "Hymns (भजनहरू)",
+        "hymns_info": "नेपाली भजन खोज र वर्गहरू",
         "media": "Media (मिडिया)",
         "audio": "Audio (अडियो)",
         "scripture": "Scripture (बाइबल)",
@@ -285,6 +287,10 @@
         "actions": "Actions (कार्य)",
         "live": "Live (लाइभ)",
         "timers": "Timers (टाइमर)"
+    },
+    "hymns": {
+        "all": "सबै भजन",
+        "categories": "भजन वर्गहरू"
     },
     "popup": {
         "import": "Import (आयात)",

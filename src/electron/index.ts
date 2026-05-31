@@ -198,9 +198,16 @@ function createMain() {
 }
 
 let isLoaded = false
+let mainLoadFallbackTimer: NodeJS.Timeout | null = null
 function mainWindowLoaded() {
+    if (isLoaded) return
     if (RECORD_STARTUP_TIME) console.timeEnd("Main window content")
     isLoaded = true
+
+    if (mainLoadFallbackTimer) {
+        clearTimeout(mainLoadFallbackTimer)
+        mainLoadFallbackTimer = null
+    }
 
     mainWindowInitialize()
     if (config.get("maximized")) maximizeMain()
@@ -226,6 +233,17 @@ export async function loadWindowContent(window: BrowserWindow, type: null | "out
 
     window.webContents.on("did-finish-load", () => {
         window.webContents.send(STARTUP, { channel: "TYPE", data: type, autoProfile })
+
+        if (mainOutput && !isLoaded) {
+            if (mainLoadFallbackTimer) clearTimeout(mainLoadFallbackTimer)
+
+            mainLoadFallbackTimer = setTimeout(() => {
+                if (isLoaded) return
+
+                console.warn("Main window did not send LOADED in time; showing it anyway.")
+                mainWindowLoaded()
+            }, 15000)
+        }
     })
 
     function loadingFailed(err: Error) {

@@ -14,8 +14,8 @@
     export let id: string
 </script>
 
-<div class="main {id !== 'shows' || $activeShow !== null ? 'context #drawer_info' : ''}">
-    {#if !$forceClock && id === "shows" && $activeShow !== null && ($activeShow.type === undefined || $activeShow.type === "show")}
+<div class="main {!(id === 'shows' || id === 'hymns') || $activeShow !== null ? 'context #drawer_info' : ''}">
+    {#if !$forceClock && (id === "shows" || id === "hymns") && $activeShow !== null && ($activeShow.type === undefined || $activeShow.type === "show")}
         <ShowInfo />
     {:else if !$forceClock && id === "media"}
         <MediaInfo />

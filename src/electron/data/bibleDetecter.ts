@@ -1,6 +1,9 @@
-type FileTypes = "freeshow" | "zefania" | "osis" | "opensong" | "beblia" | "softprojector" | "wordproject" | "biblequote" | "ibible" | "sqlite" | "mdb"
+type FileTypes = "freeshow" | "bookjson" | "zefania" | "osis" | "opensong" | "beblia" | "softprojector" | "wordproject" | "biblequote" | "ibible" | "sqlite" | "mdb"
 
 export function detectFileType(content: string): FileTypes | null {
+    const jsonType = detectJsonBibleType(content)
+    if (jsonType) return jsonType
+
     // JSON
     if (content.includes('"books":') && content.includes('"number":') && content.includes('"text":')) return "freeshow"
 
@@ -22,4 +25,26 @@ export function detectFileType(content: string): FileTypes | null {
     if (content.includes("Standard Jet DB")) return "mdb"
 
     return null
+}
+
+function detectJsonBibleType(content: string): FileTypes | null {
+    const trimmed = content.trim()
+    if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return null
+
+    try {
+        const parsed = JSON.parse(trimmed)
+        const payload = Array.isArray(parsed) && parsed.length === 2 ? parsed[1] : parsed
+
+        if (payload?.books && Array.isArray(payload.books)) return "freeshow"
+        if (isBookJson(payload)) return "bookjson"
+        if (Array.isArray(payload) && payload.some(isBookJson)) return "bookjson"
+    } catch {
+        return null
+    }
+
+    return null
+}
+
+function isBookJson(value: any) {
+    return !!value && typeof value === "object" && !!(value.book || value.name) && Array.isArray(value.chapters)
 }

@@ -3,13 +3,14 @@
     import AudioTabs from "./navigation/AudioTabs.svelte"
     import CalendarTabs from "./navigation/CalendarTabs.svelte"
     import FunctionsTabs from "./navigation/FunctionsTabs.svelte"
+    import HymnsTabs from "./navigation/HymnsTabs.svelte"
     import MediaTabs from "./navigation/MediaTabs.svelte"
     import OverlaysTabs from "./navigation/OverlaysTabs.svelte"
     import ScriptureTabs from "./navigation/ScriptureTabs.svelte"
     import ShowsTabs from "./navigation/ShowsTabs.svelte"
     import TemplatesTabs from "./navigation/TemplatesTabs.svelte"
 
-    export let id: "shows" | "media" | "overlays" | "audio" | "effects" | "scripture" | "calendar" | "functions" | "templates" | "timers"
+    export let id: "shows" | "hymns" | "media" | "overlays" | "audio" | "effects" | "scripture" | "calendar" | "functions" | "templates" | "timers"
 </script>
 
 <div class="main">
@@ -24,6 +25,8 @@
             <DropArea id="navigation" selectChildren>
                 {#if id === "shows"}
                     <ShowsTabs />
+                {:else if id === "hymns"}
+                    <HymnsTabs />
                 {:else if id === "media"}
                     <MediaTabs />
                 {:else if id === "audio"}

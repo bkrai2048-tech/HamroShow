@@ -6,6 +6,7 @@ export interface BibleContent {
     book: string
     bookAbbr: string
     bookId: string
+    useNepaliNumbers?: boolean
     chapters: number[]
     verses: { [key: string]: string }[]
     activeVerses: (number | string)[][]

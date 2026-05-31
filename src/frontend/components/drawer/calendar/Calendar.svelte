@@ -1,95 +1,137 @@
 <script lang="ts">
     import { activeDays, activePopup, eventEdit, events, labelsDisabled, popupData, special } from "../../../stores"
-    import { translateText } from "../../../utils/language"
     import { actionData } from "../../actions/actionData"
     import { removeDuplicates, sortByTime } from "../../helpers/array"
     import Icon from "../../helpers/Icon.svelte"
     import T from "../../helpers/T.svelte"
     import FloatingInputs from "../../input/FloatingInputs.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
-    import { MILLISECONDS_IN_A_DAY, copyDate, getDaysInMonth, getWeekNumber, isBetween, isSameDay } from "./calendar"
+    import { adToBS, bsToAD, ENGLISH_MONTHS, getAvailableYears, getDaysInBSMonth, NEPALI_MONTHS, NEPALI_WEEKDAYS, toNepaliNumeral, type BSDate } from "../../../utils/nepaliCalendar"
+    import { MILLISECONDS_IN_A_DAY, copyDate, getWeekNumber, isBetween, isSameDay } from "./calendar"
 
     export let active: string | null
     export let searchValue = ""
 
-    // WIP search for events
-    $: console.log(searchValue)
-
     $: sundayFirstDay = $special.firstDayOfWeek === "7"
 
-    let today = new Date()
-    $: current = new Date(today.getFullYear(), today.getMonth())
-    $: year = current.getFullYear()
-    $: month = current.getMonth()
+    const today = new Date()
+    const todayBS = adToBS(today)
+    const availableYears = getAvailableYears()
+
+    let year = todayBS.year
+    let month = todayBS.month
+    let calendarElem: HTMLElement | undefined
+    let nextScrollTimeout: NodeJS.Timeout | null = null
 
     activeDays.set([copyDate(today).getTime()])
 
-    let days: Date[][] = []
-    $: getDays(month, sundayFirstDay)
-
-    function getDays(month: number, _updater: any) {
-        let daysList: any = []
-        for (let i = 1; i <= getDaysInMonth(year, month); i++) daysList.push(new Date(year, month, i))
-
-        let before: Date[] = getDaysBefore(daysList[0].getDay())
-
-        daysList = [...before, ...daysList]
-        days = []
-
-        while (daysList.length < 42) daysList.push(copyDate(daysList[daysList.length - 1], 1))
-        while (daysList.length) days.push(daysList.splice(0, 7))
+    type NepaliCalendarDay = BSDate & {
+        adDate: Date
+        inMonth: boolean
     }
 
-    function getDaysBefore(firstDay: number): Date[] {
-        if (!sundayFirstDay && firstDay < 1 && firstDay <= 1 && firstDay !== 0) return []
+    let days: NepaliCalendarDay[][] = []
+    $: getDays(year, month, sundayFirstDay)
 
-        let before: Date[] = []
-        let i = (sundayFirstDay ? firstDay : firstDay === 0 ? 6 : firstDay - 1) - 1
-        for (i; i >= 0; i--) before.push(new Date(year, month, -i))
+    function getDays(bsYear: number, bsMonth: number, _updater: any) {
+        const daysInMonth = getDaysInBSMonth(bsYear, bsMonth)
+        const firstDayAD = bsToAD({ year: bsYear, month: bsMonth, day: 1 })
+        if (!daysInMonth || !firstDayAD) return
 
-        return before
+        const firstDayIndex = firstDayAD.getDay()
+        const beforeCount = sundayFirstDay ? firstDayIndex : firstDayIndex === 0 ? 6 : firstDayIndex - 1
+        const previousMonth = moveBSDate(bsYear, bsMonth, -1)
+        const nextMonth = moveBSDate(bsYear, bsMonth, 1)
+        const previousMonthDays = getDaysInBSMonth(previousMonth.year, previousMonth.month)
+
+        let cells: NepaliCalendarDay[] = []
+        for (let offset = beforeCount - 1; offset >= 0; offset--) cells.push(createDay(previousMonth.year, previousMonth.month, previousMonthDays - offset, false))
+        for (let day = 1; day <= daysInMonth; day++) cells.push(createDay(bsYear, bsMonth, day, true))
+
+        let nextDay = 1
+        while (cells.length < 42) {
+            cells.push(createDay(nextMonth.year, nextMonth.month, nextDay, false))
+            nextDay++
+        }
+
+        days = []
+        while (cells.length) days.push(cells.splice(0, 7))
+    }
+
+    function createDay(bsYear: number, bsMonth: number, day: number, inMonth: boolean): NepaliCalendarDay {
+        return {
+            year: bsYear,
+            month: bsMonth,
+            day,
+            adDate: bsToAD({ year: bsYear, month: bsMonth, day }) || today,
+            inMonth
+        }
+    }
+
+    function moveBSDate(bsYear: number, bsMonth: number, amount: number) {
+        let nextYear = bsYear
+        let nextMonth = bsMonth + amount
+        while (nextMonth < 1) {
+            nextMonth += 12
+            nextYear--
+        }
+        while (nextMonth > 12) {
+            nextMonth -= 12
+            nextYear++
+        }
+        return { year: nextYear, month: nextMonth }
     }
 
     let currentEvents: any[] = []
-    $: updateEvents($events, { month })
+    $: updateEvents($events, { year, month, days, searchValue })
 
     function updateEvents(events: any, _updater: any) {
-        if (!days[0]) return
+        if (!days[0]?.[0]) return
 
         currentEvents = []
-        let first = days[0][0].getTime()
-        let last = days[5][days.length - 1].getTime()
+        const first = copyDate(days[0][0].adDate).getTime()
+        const last = copyDate(days[days.length - 1][6].adDate).getTime()
+        const searchTerm = searchValue.trim().toLowerCase()
 
         Object.entries(events).forEach(([id, event]: any) => {
-            let from = new Date(event.from).getTime()
-            let to = new Date(event.to)?.getTime() || 0
-
-            let startOrEndIsInMonth = from > first || from < last || to > first || to < last
-            if (startOrEndIsInMonth) currentEvents.push({ id, ...event })
+            const from = copyDate(new Date(event.from)).getTime()
+            const to = copyDate(new Date(event.to || event.from)).getTime()
+            const isVisible = (from >= first && from <= last) || (to >= first && to <= last) || (from <= first && to >= last)
+            if (searchTerm && !`${event.name || ""} ${event.location || ""} ${event.notes || ""}`.toLowerCase().includes(searchTerm)) return
+            if (isVisible) currentEvents.push({ id, ...event })
         })
 
         currentEvents = currentEvents.sort((a, b) => a.from - b.from)
     }
 
-    let weekdays: string[] = []
+    let weekdays: { primary: string; secondary: string; index: number }[] = []
     $: {
-        weekdays = []
-        for (let i = 0; i < 7; i++) {
-            let index = sundayFirstDay ? (i === 0 ? 7 : i) : i + 1
-            weekdays.push(translateText("weekday." + index))
-        }
+        const order = sundayFirstDay ? [0, 1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5, 6, 0]
+        weekdays = order.map((index) => ({ primary: NEPALI_WEEKDAYS.ne[index], secondary: NEPALI_WEEKDAYS.en[index], index }))
     }
 
-    let calendarElem: HTMLElement | undefined
-    let nextScrollTimeout: NodeJS.Timeout | null = null
+    $: secondaryMonthDisplay = getSecondaryMonthDisplay(year, month)
+
+    function getSecondaryMonthDisplay(bsYear: number, bsMonth: number) {
+        const daysInMonth = getDaysInBSMonth(bsYear, bsMonth)
+        const startAD = bsToAD({ year: bsYear, month: bsMonth, day: 1 })
+        const endAD = bsToAD({ year: bsYear, month: bsMonth, day: daysInMonth })
+        if (!startAD || !endAD) return ""
+
+        const startMonth = ENGLISH_MONTHS.en[startAD.getMonth()]
+        const endMonth = ENGLISH_MONTHS.en[endAD.getMonth()]
+        if (startMonth === endMonth) return `${startMonth} ${startAD.getFullYear()}`
+        return `${startMonth}/${endMonth} ${startAD.getFullYear()}`
+    }
+
     function wheel(e: any) {
         if (nextScrollTimeout || !calendarElem) return
 
-        let scrollDown = e.deltaY > 0
+        const scrollDown = e.deltaY > 0
         if (scrollDown) nextMonth(true)
         else previousMonth(true)
 
-        let isMouseAndNotTrackpad = e.deltaY >= 100 || e.deltaY <= -100
+        const isMouseAndNotTrackpad = e.deltaY >= 100 || e.deltaY <= -100
         if (isMouseAndNotTrackpad) return
 
         nextScrollTimeout = setTimeout(() => {
@@ -99,23 +141,39 @@
 
     function nextMonth(checkScroll = false) {
         if (!calendarElem) return
-        let scrolledToBottom = calendarElem.scrollTop + 1 + calendarElem.offsetHeight >= calendarElem.scrollHeight
+        const scrolledToBottom = calendarElem.scrollTop + 1 + calendarElem.offsetHeight >= calendarElem.scrollHeight
         if (checkScroll && !scrolledToBottom) return
 
-        current = new Date(year, month, 33)
+        const next = moveBSDate(year, month, 1)
+        if (!getDaysInBSMonth(next.year, next.month)) return
+        year = next.year
+        month = next.month
     }
 
     function previousMonth(checkScroll = false) {
-        let scrolledToTop = calendarElem?.scrollTop === 0
+        const scrolledToTop = calendarElem?.scrollTop === 0
         if (checkScroll && !scrolledToTop) return
 
-        current = new Date(year, month, 0)
+        const previous = moveBSDate(year, month, -1)
+        if (!getDaysInBSMonth(previous.year, previous.month)) return
+        year = previous.year
+        month = previous.month
+    }
+
+    function previousYear() {
+        if (!getDaysInBSMonth(year - 1, month)) return
+        year--
+    }
+
+    function nextYear() {
+        if (!getDaysInBSMonth(year + 1, month)) return
+        year++
     }
 
     function getEvents(day: Date, currentEvents: any[], type: string) {
         let events: any[] = []
         currentEvents.forEach((a) => {
-            let eventIsAtDayOrGoingThrough = a.to ? isBetween(new Date(a.from), new Date(a.to), copyDate(day)) : isSameDay(new Date(a.from), day)
+            const eventIsAtDayOrGoingThrough = a.to ? isBetween(new Date(a.from), new Date(a.to), copyDate(day)) : isSameDay(new Date(a.from), day)
             if (eventIsAtDayOrGoingThrough) events.push(a)
         })
         events.sort(sortByTime)
@@ -135,7 +193,7 @@
 
     function toggleCurrentDay(day: Date) {
         activeDays.update((a) => {
-            let alreadySelected = a.includes(day.getTime())
+            const alreadySelected = a.includes(day.getTime())
             if (!alreadySelected) return [...a, day.getTime()]
 
             if (a.length < 2) return a
@@ -148,20 +206,19 @@
     function selectRange(day: Date) {
         let first = $activeDays[0] || day.getTime()
         let last = day.getTime()
-        let timeDifference = day.getTime() - first
+        const timeDifference = day.getTime() - first
         if (timeDifference === 0) return
 
-        // invert
         if (timeDifference < 0) {
             first = last
             last = $activeDays[$activeDays.length - 1]
         }
 
-        let newActiveDays: number[] = []
+        const newActiveDays: number[] = []
         let count = 0
 
         do {
-            let newDay = copyDate(new Date(first + count * MILLISECONDS_IN_A_DAY)).getTime()
+            const newDay = copyDate(new Date(first + count * MILLISECONDS_IN_A_DAY)).getTime()
             newActiveDays.push(newDay)
             count++
         } while (!isSameDay(new Date(newActiveDays[newActiveDays.length - 1]), new Date(last)))
@@ -174,10 +231,8 @@
         activeDays.set(removeDuplicates([...$activeDays, copyDate(day).getTime()]))
     }
 
-    // listen for update
     $: if ($popupData?.action === "select_show" && $popupData?.location === "event" && $popupData?.showId) selectedShow()
     function selectedShow() {
-        // let animation finish
         setTimeout(() => activePopup.set("edit_event"), 300)
     }
 
@@ -187,23 +242,55 @@
         return type
     }
 
-    $: isPresentDay = !!$activeDays.length && isSameDay(new Date($activeDays[0]), today) && current.getMonth() === new Date($activeDays[0]).getMonth() && current.getFullYear() === new Date($activeDays[0]).getFullYear()
+    $: isPresentDay = !!$activeDays.length && isSameDay(new Date($activeDays[0]), today) && year === todayBS.year && month === todayBS.month
     function setToPresentDay() {
-        current = today
+        year = todayBS.year
+        month = todayBS.month
         activeDays.set([copyDate(today).getTime()])
+    }
+
+    function isSaturday(index: number) {
+        const weekday = weekdays[index]?.index
+        return weekday === 6
     }
 </script>
 
 <div class="calendar">
-    <div class="week" style="flex: 1;">
-        <div class="weekday" style="min-width: 25px;flex: 1;padding: 0;background-color: var(--primary-darker);font-size: 0.9em;opacity: 0.7;font-weight: 600;">
-            {current.getFullYear().toString().slice(2)}
+    <div class="calendarHeader">
+        <button type="button" class="todayButton" on:click={setToPresentDay}>आज</button>
+
+        <div class="monthControls">
+            <button type="button" on:click={previousYear} title="Previous year"><Icon id="previous" size={0.9} /><Icon id="previous" size={0.9} /></button>
+            <button type="button" on:click={() => previousMonth()} title="Previous month"><Icon id="previous" size={1} /></button>
+
+            <select bind:value={year} aria-label="BS year">
+                {#each availableYears as availableYear}
+                    <option value={availableYear}>{toNepaliNumeral(availableYear)}</option>
+                {/each}
+            </select>
+
+            <select bind:value={month} aria-label="BS month">
+                {#each NEPALI_MONTHS.ne as monthName, index}
+                    <option value={index + 1}>{monthName}</option>
+                {/each}
+            </select>
+
+            <button type="button" on:click={() => nextMonth()} title="Next month"><Icon id="next" size={1} /></button>
+            <button type="button" on:click={nextYear} title="Next year"><Icon id="next" size={0.9} /><Icon id="next" size={0.9} /></button>
         </div>
 
+        <div class="monthSummary">
+            <strong>{toNepaliNumeral(year)} {NEPALI_MONTHS.ne[month - 1]}</strong>
+            <span>{secondaryMonthDisplay}</span>
+        </div>
+    </div>
+
+    <div class="week headerWeek">
+        <div class="weekday sideLabel">बि.सं.</div>
         {#each weekdays as weekday}
-            <div class="weekday">
-                {weekday}
-                <!-- {weekday.slice(0, 3)} -->
+            <div class="weekday" class:saturday={weekday.index === 6}>
+                <span>{weekday.primary}</span>
+                <small>{weekday.secondary}</small>
             </div>
         {/each}
     </div>
@@ -211,15 +298,14 @@
     <div class="grid" on:wheel|passive={wheel} bind:this={calendarElem}>
         {#each days as week}
             <div class="week">
-                <span class="weeknumber">
-                    {getWeekNumber(week[0])}
-                </span>
+                <span class="weeknumber">{toNepaliNumeral(getWeekNumber(week[0].adDate))}</span>
 
-                {#each week as day}
-                    {@const dayEvents = getEvents(day, currentEvents, active || "event")}
-                    <div class="day" class:today={isSameDay(day, today)} class:faded={day.getMonth() !== month || day.getFullYear() !== year} class:active={$activeDays?.includes(copyDate(day).getTime())} on:mousedown={(e) => dayClick(e, day)} on:mousemove={(e) => move(e, day)}>
-                        <!-- // isSameDay(day, new Date($activeDays[0]))} -->
-                        <span style="font-size: 1.5em;font-weight: 600;">{day.getDate()}</span>
+                {#each week as day, index}
+                    {@const dayEvents = getEvents(day.adDate, currentEvents, active || "event")}
+                    <div class="day" class:today={isSameDay(day.adDate, today)} class:faded={!day.inMonth} class:active={$activeDays?.includes(copyDate(day.adDate).getTime())} class:saturday={isSaturday(index)} on:mousedown={(e) => dayClick(e, day.adDate)} on:mousemove={(e) => move(e, day.adDate)}>
+                        <span class="bsDay">{toNepaliNumeral(day.day)}</span>
+                        <span class="adDay">{day.adDate.getDate()}</span>
+
                         <span class="events">
                             {#each dayEvents as event, i}
                                 {@const eventIcon = getEventIcon(event.type, { actionId: event.action?.id })}
@@ -257,9 +343,9 @@
 
     <div class="divider"></div>
 
-    <span style="opacity: 0.8;text-transform: capitalize;white-space: nowrap;align-self: center;padding: 0 10px;">
-        {translateText("month." + (current.getMonth() + 1))}
-        {current.getFullYear()}
+    <span class="floatingMonth">
+        {toNepaliNumeral(year)} {NEPALI_MONTHS.ne[month - 1]}
+        <small>{secondaryMonthDisplay}</small>
     </span>
 </FloatingInputs>
 
@@ -283,13 +369,79 @@
         flex-direction: column;
         justify-content: space-between;
         overflow-y: auto;
+        background: var(--primary);
+    }
+
+    .calendarHeader {
+        display: grid;
+        grid-template-columns: auto minmax(260px, 1fr) auto;
+        gap: 12px;
+        align-items: center;
+        padding: 10px 12px;
+        background: linear-gradient(90deg, var(--primary-darkest), var(--primary-darker));
+        border-bottom: 1px solid var(--primary-lighter);
+    }
+
+    .todayButton,
+    .monthControls button,
+    .monthControls select {
+        border: 1px solid color-mix(in srgb, var(--secondary) 35%, transparent);
+        border-radius: 5px;
+        background: color-mix(in srgb, var(--primary-lighter) 55%, transparent);
+        color: var(--text);
+        min-height: 30px;
+    }
+
+    .todayButton,
+    .monthControls button {
+        cursor: pointer;
+        padding: 4px 9px;
+        font-weight: 700;
+    }
+
+    .monthControls {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .monthControls select {
+        padding: 4px 7px;
+        color-scheme: dark;
+    }
+
+    .monthControls button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .monthSummary {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        min-width: 120px;
+    }
+
+    .monthSummary strong {
+        color: var(--secondary);
+        white-space: nowrap;
+    }
+
+    .monthSummary span,
+    .floatingMonth small,
+    .weekday small,
+    .adDay {
+        opacity: 0.72;
+        font-size: 0.78em;
     }
 
     .grid {
         flex: 10;
         display: flex;
         flex-direction: column;
-
         overflow: auto;
     }
 
@@ -297,6 +449,10 @@
         display: flex;
         flex: 2;
         justify-content: space-between;
+    }
+
+    .headerWeek {
+        flex: 0 0 auto;
     }
 
     .day,
@@ -312,44 +468,76 @@
         overflow: hidden;
         text-transform: capitalize;
         background-color: var(--primary-darkest);
+        flex-direction: column;
+        gap: 1px;
+        font-weight: 700;
     }
 
+    .weekday.saturday,
+    .day.saturday .bsDay {
+        color: #ff8f8f;
+    }
+
+    .sideLabel,
     .weeknumber {
         min-width: 25px;
-        font-size: 0.8em;
         flex: 1;
         color: var(--secondary);
         background-color: var(--primary-darkest);
+    }
+
+    .weeknumber {
+        font-size: 0.8em;
         display: flex;
         align-items: center;
         justify-content: center;
     }
 
     .day {
+        position: relative;
         flex-direction: column;
         overflow: hidden;
+        min-height: 72px;
+        border-top: 1px solid color-mix(in srgb, var(--primary-lighter) 42%, transparent);
+        border-left: 1px solid color-mix(in srgb, var(--primary-lighter) 28%, transparent);
     }
+
     .day:hover {
         background-color: var(--hover);
     }
 
     .day.faded {
-        opacity: 0.5;
+        opacity: 0.48;
     }
+
     .day.today {
         color: var(--secondary);
         background-color: var(--primary-darkest);
     }
+
     .day.active {
         background-color: var(--focus);
     }
 
+    .bsDay {
+        font-size: 1.45em;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .adDay {
+        position: absolute;
+        top: 5px;
+        right: 7px;
+    }
+
     .events {
-        /* flex: 3; */
         width: 100%;
         display: flex;
         flex-wrap: wrap;
         justify-content: center;
+        min-height: 18px;
+        margin-top: 4px;
     }
 
     .event {
@@ -359,11 +547,38 @@
         display: flex;
         align-items: center;
     }
+
+    .event p {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .dot {
         display: flex;
         height: 10px;
         width: 10px;
         border-radius: 50%;
         margin: 2px;
+    }
+
+    .floatingMonth {
+        opacity: 0.9;
+        white-space: nowrap;
+        align-self: center;
+        padding: 0 10px;
+        display: flex;
+        flex-direction: column;
+        line-height: 1.2;
+    }
+
+    @media (max-width: 760px) {
+        .calendarHeader {
+            grid-template-columns: 1fr;
+        }
+
+        .monthSummary {
+            align-items: center;
+        }
     }
 </style>

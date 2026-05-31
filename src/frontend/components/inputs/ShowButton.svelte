@@ -25,11 +25,14 @@
     export let index: null | number = null
     export let isFirst: boolean = false
     export let isProject: boolean = false
+    export let iconLabel: null | string = null
+    export let hideNumber = false
+    export let displayName: null | string = null
     $: type = show.type || "show"
-    $: name = type === "show" ? $shows[show.id]?.name : type === "overlay" ? $overlays[show.id]?.name : type === "player" ? ($playerVideos[id] || show.data?.id ? $playerVideos[id]?.name || show.data?.name || show.data?.id : setNotFound(id)) : show.name
+    $: name = displayName || (type === "show" ? $shows[show.id]?.name : type === "overlay" ? $overlays[show.id]?.name : type === "player" ? ($playerVideos[id] || show.data?.id ? $playerVideos[id]?.name || show.data?.name || show.data?.id : setNotFound(id)) : show.name)
     // export let page: "side" | "drawer" = "drawer"
     export let match: null | number = null
-    $: showNumber = isProject ? "" : show?.quickAccess?.number || show?.meta?.number || ""
+    $: showNumber = isProject || hideNumber ? "" : show?.quickAccess?.number || show?.meta?.number || ""
     $: showDuration = isProject ? $shows[show.id]?.quickAccess?.duration || show?.scheduleLength || 0 : 0
 
     let profile = getAccess("shows")
@@ -255,11 +258,13 @@
     <MaterialButton on:click={click} on:dblclick={doubleClick} {isActive} showOutline={outline} class="context {$$props.class}{readOnly ? '_readonly' : ''}" style="font-weight: normal;--outline-color: {activeOutput || 'var(--secondary)'};{$notFound.show?.includes(id) ? 'background-color: rgb(255 0 0 / 0.2);' : ''}{style}{$$props.style || ''}" tab>
         <div class="row" style={type === "show_placeholder" ? "font-style: italic;" : ""}>
             <span class="cell" style={isProject ? `width: 100%;max-width: ${show.layoutInfo?.name || show.scheduleLength ? 92 : 100}%;` : `width: 75%;min-width: 120px;max-width: calc(100% ${showNumber ? "- var(--number-width)" : ""} - var(--modified-width, 0px));`}>
-                <div class="icon" class:isMedia style="position: relative;">
+                <div class="icon" class:isMedia class:hasLabel={!!iconLabel} style="position: relative;">
                     {#if type === "show_placeholder"}
                         <Icon id="swap" white right />
                     {:else if thumbnailPath}
                         <img class="thumbnail" src={encodeFilePath(thumbnailPath)} alt="thumbnail" style={mediaStyleString} />
+                    {:else if iconLabel}
+                        <span class="icon-label">{iconLabel}</span>
                     {:else if icon || show.locked}
                         <Icon id={show.played ? "check" : iconID ? iconID : show.locked ? "locked" : "noIcon"} custom={!show.played && custom} box={iconID === "ppt" ? 50 : 24} color={show.played ? "#97ff95" : customIconsColors[iconID || ""] || ""} white right={!isMedia} boxed={!show.locked} />
                     {/if}
@@ -393,6 +398,24 @@
         display: flex;
         align-items: center;
         justify-content: center;
+    }
+    .icon.hasLabel:not(.isMedia) {
+        min-width: 34px;
+        margin-right: 6px;
+    }
+    .icon-label {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 30px;
+        height: 22px;
+        padding: 0 4px;
+        border-radius: 4px;
+        background-color: rgb(255 255 255 / 0.12);
+        color: var(--text);
+        font-size: 0.78em;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
     }
     .icon.isMedia {
         min-width: 35px;

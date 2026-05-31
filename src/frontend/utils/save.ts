@@ -345,6 +345,7 @@ export function unsavedUpdater() {
             if (!initialized) return
 
             saved.set(false)
+            if (id === "showsCache") queueShowEditSave()
             if (id === "deletedShows" || id === "renamedShows") {
                 setTimeout(() => saved.set(false))
             }
@@ -390,6 +391,16 @@ const customSavedListener = {
 
         return data
     }
+}
+
+let showEditSaveTimeout: NodeJS.Timeout | null = null
+function queueShowEditSave() {
+    if (showEditSaveTimeout) clearTimeout(showEditSaveTimeout)
+    showEditSaveTimeout = setTimeout(() => {
+        showEditSaveTimeout = null
+        if (get(saved) || get(statusIndicator) === "saving") return
+        save(false, { autosave: true })
+    }, 2500)
 }
 
 const saveList: { [key in SaveList]: any } = {

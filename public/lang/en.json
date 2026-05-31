@@ -412,6 +412,8 @@
     "tabs": {
         "shows": "Shows",
         "shows_info": "A show is made up of slides; it can be a song, presentation, media, scripture, and more.",
+        "hymns": "Hymns",
+        "hymns_info": "Nepali hymns with category filters and Nepali/Romanized search.",
         "media": "Media",
         "overlays": "Overlays",
         "audio": "Audio",
@@ -428,6 +430,10 @@
         "templates": "Templates",
         "web": "Web",
         "search_tip": "Drawer content search"
+    },
+    "hymns": {
+        "all": "All hymns",
+        "categories": "Hymn categories"
     },
     "category": {
         "all": "All",

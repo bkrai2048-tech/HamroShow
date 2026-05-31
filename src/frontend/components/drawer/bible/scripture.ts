@@ -14,6 +14,7 @@ import { requestMain, sendMain } from "../../../IPC/main"
 import { splitTextContentInHalf } from "../../../show/slides"
 import { activeProject, activeScripture, activeShow, drawerTabsData, media, notFound, outLocked, overlays, scriptureHistory, scriptures, scripturesCache, scriptureSettings, styles, templates } from "../../../stores"
 import { trackScriptureUsage } from "../../../utils/analytics"
+import { localizeBibleNumbers, shouldUseNepaliNumbers } from "../../../utils/nepaliNumbers"
 import { TemplateHelper } from "../../../utils/templates"
 import { getKey } from "../../../values/keys"
 import { customActionActivation } from "../../actions/actions"
@@ -148,6 +149,7 @@ export async function getActiveScripturesContent(selectedVerses: (number | strin
 
                 const bookName = Book.name
                 const bookAbbr = Book.getAbbreviation()
+                const useNepaliNumbers = shouldUseNepaliNumbers(id, scriptureData?.name, scriptureData?.customName, version, bookName, BibleData.data?.metadata)
                 const selectedChapters = active?.chapters.map((c) => Number(c)) || []
                 const Chapters = await Promise.all(selectedChapters.map((c) => Book.getChapter(c)))
 
@@ -239,7 +241,7 @@ export async function getActiveScripturesContent(selectedVerses: (number | strin
 
                 // const reference = Chapter.getVerse(selectedVerses[0]).getReference()
 
-                return { id, isApi: !!scriptureData?.api, version, metadata, book: bookName, bookAbbr, bookId: active?.book || "", chapters: selectedChapters, verses: allVersesText, activeVerses: expandedSelectedVerses, attributionString, attributionRequired } as BibleContent
+                return { id, isApi: !!scriptureData?.api, version, metadata, book: bookName, bookAbbr, bookId: active?.book || "", useNepaliNumbers, chapters: selectedChapters, verses: allVersesText, activeVerses: expandedSelectedVerses, attributionString, attributionRequired } as BibleContent
             })
             .filter(Boolean)
     )) as BibleContent[]
@@ -277,10 +279,11 @@ export async function playScripture() {
     const { slides, attributions, slideDynamicValues } = await getScriptureSlidesNew({ biblesContent, selectedChapters, selectedVerses }, true)
 
     const fullReferenceRange = buildFullReferenceRange(selectedChapters, selectedVerses)
+    const displayFullReferenceRange = localizeBibleNumbers(fullReferenceRange, !!biblesContent[0].useNepaliNumbers)
     // include every selected chapter/verse in the displayed reference label
     const { id, subverse } = getVerseIdParts(selectedVerses[0]?.[0])
     const showSplitSuffix = get(scriptureSettings).splitLongVersesSuffix
-    const value = `${id}${showSplitSuffix && subverse ? getVersePartLetter(subverse) : ""}`
+    const value = localizeBibleNumbers(`${id}${showSplitSuffix && subverse ? getVersePartLetter(subverse) : ""}`, !!biblesContent[0].useNepaliNumbers)
 
     // scripture usage history
     scriptureHistory.update((a) => {
@@ -289,7 +292,7 @@ export async function playScripture() {
             book: biblesContent[0].bookId,
             chapter: biblesContent[0].chapters[0],
             verse: selectedVerses[0],
-            reference: `${biblesContent[0].book} ${fullReferenceRange || `${biblesContent[0].chapters[0]}:${value}`}`.trim(),
+            reference: `${biblesContent[0].book} ${displayFullReferenceRange || `${localizeBibleNumbers(biblesContent[0].chapters[0], !!biblesContent[0].useNepaliNumbers)}:${value}`}`.trim(),
             text: getSplittedVerses(biblesContent[0].verses?.[0])[selectedVerses[0]?.[0]] || biblesContent[0].verses[selectedVerses[0]?.[0]] || ""
         }
         // WIP multiple verses, play from another version
@@ -814,7 +817,7 @@ export async function getScriptureSlidesNew(data: any, onlyOne = false, disableR
     let scriptureVerseContent: { number: string; text: string; verseId: string }[][][] = []
 
     const fullVerses = buildFullReferenceRange(selectedChapters, selectedVerses)
-    const fullReference = `${biblesContent[0]?.book} ${fullVerses}`.trim()
+    const fullReference = localizeBibleNumbers(`${biblesContent[0]?.book} ${fullVerses}`.trim(), !!biblesContent[0]?.useNepaliNumbers)
     const divider = getReferenceDivider()
 
     let groupNames: string[] = []
@@ -869,7 +872,7 @@ export async function getScriptureSlidesNew(data: any, onlyOne = false, disableR
                         }
                         if (showSuffix && subverse) verseNumberValue += getVersePartLetter(Number(subverse))
 
-                        number = verseNumberValue
+                        number = localizeBibleNumbers(verseNumberValue, !!bible.useNepaliNumbers)
                     }
 
                     scriptureVerseContent[i][j].push({ number, text, verseId })
@@ -877,10 +880,11 @@ export async function getScriptureSlidesNew(data: any, onlyOne = false, disableR
             })
 
             const verses = buildFullReferenceRange(bible.chapters, bible.activeVerses)
-            const justVerses = verses.split(divider)[1] || ""
+            const displayVerses = localizeBibleNumbers(verses, !!bible.useNepaliNumbers)
+            const justVerses = displayVerses.split(divider)[1] || ""
             if (j === 0) {
                 const mergedBooks = removeDuplicates(biblesContent.map((a) => a?.book).filter(Boolean)).join(" / ")
-                const mergedReference = `${mergedBooks} ${verses}`.trim()
+                const mergedReference = localizeBibleNumbers(`${mergedBooks} ${verses}`.trim(), !!bible.useNepaliNumbers)
 
                 slideDynamicValues[i].scripture_reference = format(mergedReference)
                 slideDynamicValues[i][`{key_${i}_${j}}`] = `scripture_text`
@@ -889,7 +893,7 @@ export async function getScriptureSlidesNew(data: any, onlyOne = false, disableR
                 slidesString = slidesString.replace("{scripture_text}", `{key_${i}_${j}}`)
                 slidesString = slidesString.replace("{scripture_verses}", format(justVerses))
             }
-            const reference = `${bible.book} ${verses}`.trim()
+            const reference = localizeBibleNumbers(`${bible.book} ${verses}`.trim(), !!bible.useNepaliNumbers)
             slideDynamicValues[i][`scripture${j + 1}_reference`] = format(reference)
             slideDynamicValues[i][`{key_${i}_${j}}`] = `scripture${j + 1}_text`
             slideDynamicValues[i][`scripture${j + 1}_verses`] = format(justVerses)
@@ -922,9 +926,9 @@ export async function getScriptureSlidesNew(data: any, onlyOne = false, disableR
         }
 
         globalCustomDynamicValues[`scripture${i}_name`] = format(bibleVersions[i - 1] || "")
-        globalCustomDynamicValues[`scripture${i}_book`] = format(biblesContent[i - 1]?.book || "")
-        globalCustomDynamicValues[`scripture${i}_book_abbr`] = format(biblesContent[i - 1]?.bookAbbr || "")
-        globalCustomDynamicValues[`scripture${i}_chapter`] = format(selectedChapters[i - 1]?.toString() || "")
+        globalCustomDynamicValues[`scripture${i}_book`] = format(localizeBibleNumbers(biblesContent[i - 1]?.book || "", !!biblesContent[i - 1]?.useNepaliNumbers))
+        globalCustomDynamicValues[`scripture${i}_book_abbr`] = format(localizeBibleNumbers(biblesContent[i - 1]?.bookAbbr || "", !!biblesContent[i - 1]?.useNepaliNumbers))
+        globalCustomDynamicValues[`scripture${i}_chapter`] = format(localizeBibleNumbers(selectedChapters[i - 1]?.toString() || "", !!biblesContent[i - 1]?.useNepaliNumbers))
         slidesString = slidesString.replaceAll(`{scripture${i}_name}`, globalCustomDynamicValues[`scripture${i}_name`])
         slidesString = slidesString.replaceAll(`{scripture${i}_book}`, globalCustomDynamicValues[`scripture${i}_book`])
         slidesString = slidesString.replaceAll(`{scripture${i}_book_abbr}`, globalCustomDynamicValues[`scripture${i}_book_abbr`])
@@ -932,9 +936,9 @@ export async function getScriptureSlidesNew(data: any, onlyOne = false, disableR
     }
 
     globalCustomDynamicValues.scripture_name = format(mergedNames)
-    globalCustomDynamicValues.scripture_book = format(mergedBooks)
-    globalCustomDynamicValues.scripture_book_abbr = format(mergedBooksAbbr)
-    globalCustomDynamicValues.scripture_chapter = format(selectedChapters[0]?.toString() || "")
+    globalCustomDynamicValues.scripture_book = format(localizeBibleNumbers(mergedBooks, !!biblesContent[0]?.useNepaliNumbers))
+    globalCustomDynamicValues.scripture_book_abbr = format(localizeBibleNumbers(mergedBooksAbbr, !!biblesContent[0]?.useNepaliNumbers))
+    globalCustomDynamicValues.scripture_chapter = format(localizeBibleNumbers(selectedChapters[0]?.toString() || "", !!biblesContent[0]?.useNepaliNumbers))
     slidesString = slidesString.replaceAll("{scripture_name}", globalCustomDynamicValues.scripture_name)
     slidesString = slidesString.replaceAll("{scripture_book}", globalCustomDynamicValues.scripture_book)
     slidesString = slidesString.replaceAll("{scripture_book_abbr}", globalCustomDynamicValues.scripture_book_abbr)
@@ -1149,6 +1153,7 @@ export function getScriptureSlides({ biblesContent, selectedChapters, selectedVe
                 let verseNumberValue = ""
                 if (showBaseNumber) verseNumberValue = `${id}${endNumber ? "-" + endNumber : ""}`
                 if (showSuffix && subverse) verseNumberValue += getVersePartLetter(Number(subverse))
+                verseNumberValue = localizeBibleNumbers(verseNumberValue, !!bible.useNepaliNumbers)
 
                 if (verseNumberValue) {
                     slideArr.lines[lineIndex].text.push({
@@ -1313,7 +1318,8 @@ export function getScriptureSlides({ biblesContent, selectedChapters, selectedVe
         let text = customText || ""
         if (!showVersion && !showVerse) return
         text = text.replaceAll(textKeys.showVersion, showVersion ? versions : "")
-        text = text.replaceAll(textKeys.showVerse, showVerse ? books + " " + chapterNumber + divider + range : "")
+        const useNepaliNumbers = !!biblesContent[0]?.useNepaliNumbers
+        text = text.replaceAll(textKeys.showVerse, showVerse ? localizeBibleNumbers(books + " " + chapterNumber + divider + range, useNepaliNumbers) : "")
 
         text.split("\n").forEach((line) => {
             if (!line.trim()) return
