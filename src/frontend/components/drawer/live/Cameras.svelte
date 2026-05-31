@@ -3,18 +3,26 @@
     import { type CameraData, cameraManager } from "../../../media/cameraManager"
     import { media } from "../../../stores"
     import { sortByName } from "../../helpers/array"
+    import Icon from "../../helpers/Icon.svelte"
     import { getMediaStyle } from "../../helpers/media"
     import T from "../../helpers/T.svelte"
+    import MaterialButton from "../../inputs/MaterialButton.svelte"
     import Center from "../../system/Center.svelte"
     import Cam from "./Cam.svelte"
 
     export let showPlayOnHover = true
 
     let cams: CameraData[] = []
-    onMount(async () => {
-        const cameras = await cameraManager.getCamerasList()
+    let loading = false
+
+    onMount(() => refreshCameras(false))
+
+    async function refreshCameras(force = true) {
+        loading = true
+        const cameras = force ? await cameraManager.refreshCameraList() : await cameraManager.getCamerasList()
         cams = sortByName(cameras)
-    })
+        loading = false
+    }
 
     let dispatch = createEventDispatcher()
     function click(event, cam) {
@@ -29,6 +37,12 @@
     }
 </script>
 
+<div class="camera-toolbar">
+    <MaterialButton title="Refresh camera list" disabled={loading} on:click={() => refreshCameras()}>
+        <Icon id="reset" size={1.1} white />
+    </MaterialButton>
+</div>
+
 {#if cams.length}
     {#each cams as cam}
         <Cam {cam} on:click={(e) => click(e.detail, cam)} style={getStyle(cam.id, $media)} {showPlayOnHover} />
@@ -38,3 +52,12 @@
         <T id="empty.general" />
     </Center>
 {/if}
+
+<style>
+    .camera-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        width: 100%;
+        padding: 0 0 5px;
+    }
+</style>

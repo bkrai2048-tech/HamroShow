@@ -144,6 +144,12 @@ class CameraManager {
         }
     }
 
+    async refreshCameraList(): Promise<CameraData[]> {
+        this.storedCameraList = []
+        this.lastCameraListUpdate = 0
+        return this.getCamerasList()
+    }
+
     failed: string[] = []
     private async warmUpCamera(camera: CameraData, { retryCount, lastError }: any = {}) {
         if (this.activeCameras.has(camera.id)) return

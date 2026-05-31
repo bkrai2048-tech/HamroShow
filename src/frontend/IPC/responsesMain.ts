@@ -492,6 +492,7 @@ export const mainResponses: MainResponses = {
                 ;(mainData as string[]).forEach((path) => sendMain(Main.PDF_TO_IMAGE, { filePath: path }))
                 // addToProject("pdf", mainData as string[])
             },
+            video: () => addToProject(null, mainData as string[]),
             powerkey: () => addToProject("ppt", mainData as string[])
         }
         if (mainData.find((dataValue) => typeof dataValue === "string")) {

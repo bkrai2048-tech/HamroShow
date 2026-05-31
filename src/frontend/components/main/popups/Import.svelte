@@ -6,7 +6,7 @@
     import { sendMain } from "../../../IPC/main"
     import { activePopup, alertMessage, popupData } from "../../../stores"
     import { translateText } from "../../../utils/language"
-    import { presentationExtensions } from "../../../values/extensions"
+    import { presentationExtensions, videoExtensions } from "../../../values/extensions"
     import Icon from "../../helpers/Icon.svelte"
     import HRule from "../../input/HRule.svelte"
     import InputRow from "../../input/InputRow.svelte"
@@ -55,6 +55,7 @@
     ]
 
     const media_formats = [
+        { name: "OBS / Video", title: "Added to your project", icon: "video", extensions: videoExtensions, id: "video" },
         { name: "Lessons.church", title: "ChurchApps\nhttps://lessons.church", extensions: ["json", "olp", "olf"], id: "lessons" },
         { name: "PDF", title: "Added to your project", extensions: ["pdf"], id: "pdf" },
         { name: "PowerPoint", extensions: [], id: "powerpoint" }
@@ -167,7 +168,7 @@
     </div> -->
 {:else if mode === "project"}
     <div style="display: flex;gap: 5px;">
-        {#each media_formats.filter((a) => ["pdf", "powerpoint"].includes(a.id)) as format}
+        {#each media_formats.filter((a) => ["video", "pdf", "powerpoint"].includes(a.id)) as format}
             <InputRow style="flex: 1;">
                 <MaterialButton
                     variant="outlined"
@@ -182,7 +183,11 @@
                         displayTutorial(format)
                     }}
                 >
-                    <img style="height: 60px;width: 70px;" src="./import-logos/{format.id}.webp" alt="{format.id}-logo" draggable={false} />
+                    {#if format.icon}
+                        <Icon style="height: 60px;width: 70px;padding: 10px 10px 10px 0;" id={format.icon} size={2.5} white />
+                    {:else}
+                        <img style="height: 60px;width: 70px;" src="./import-logos/{format.id}.webp" alt="{format.id}-logo" draggable={false} />
+                    {/if}
                     <p>{format.name}</p>
                 </MaterialButton>
             </InputRow>
@@ -288,7 +293,11 @@
                         displayTutorial(format)
                     }}
                 >
-                    <img style="height: 60px;width: 70px;" src="./import-logos/{format.id}.webp" alt="{format.id}-logo" draggable={false} />
+                    {#if format.icon}
+                        <Icon style="height: 60px;width: 70px;padding: 10px 10px 10px 0;" id={format.icon} size={2.5} white />
+                    {:else}
+                        <img style="height: 60px;width: 70px;" src="./import-logos/{format.id}.webp" alt="{format.id}-logo" draggable={false} />
+                    {/if}
                     <p>{format.name}</p>
                 </MaterialButton>
 
