@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { ShowList } from "../../../../types/Show"
-    import { activeEdit, activeFocus, activeShow, focusedArea, focusMode, sortedShowsList } from "../../../stores"
+    import { activeEdit, activeFocus, activeShow, focusedArea, focusMode, sortedShowsList, special } from "../../../stores"
     import { formatSearch, showSearch } from "../../../utils/search"
     import { getHymnCategoryName, getHymnDisplayName, getHymnDisplayNumber, isNepaliHymn, sortNepaliHymns, type HymnSortDirection, type HymnSortMode } from "../../../utils/hymns"
     import Icon from "../../helpers/Icon.svelte"
@@ -9,6 +9,15 @@
     import VirtualList from "../VirtualList.svelte"
     import ShowButton from "../../inputs/ShowButton.svelte"
     import T from "../../helpers/T.svelte"
+
+    function updateSpecial(value: boolean, key: string) {
+        special.update((data) => {
+            if (!value) delete data[key]
+            else data[key] = value
+
+            return data
+        })
+    }
 
     export let active: string | null
     export let searchValue: string
@@ -98,6 +107,10 @@
     <div class="summary">
         <span>{selectedCategory === "all" ? "All hymns" : getHymnCategoryName(selectedCategory)}</span>
         <div class="summary-actions">
+            <button type="button" class:active={$special.repeatChorusAfterVerse} class="chorus-repeat" on:click={() => updateSpecial(!$special.repeatChorusAfterVerse, "repeatChorusAfterVerse")} title="Repeat chorus after each verse">
+                <Icon id="loop" size={0.9} white />
+                <span>Repeat chorus</span>
+            </button>
             <span>{filteredHymns.length}</span>
         </div>
     </div>
@@ -195,6 +208,33 @@
         display: flex;
         align-items: center;
         gap: 10px;
+    }
+
+    .chorus-repeat {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        min-height: 22px;
+        border: 1px solid color-mix(in srgb, var(--secondary) 28%, transparent);
+        border-radius: 4px;
+        padding: 1px 7px;
+        background: transparent;
+        color: var(--text);
+        cursor: pointer;
+        font: inherit;
+        font-size: 0.92em;
+        font-weight: 700;
+        opacity: 0.82;
+    }
+
+    .chorus-repeat:hover,
+    .chorus-repeat.active {
+        background: color-mix(in srgb, var(--secondary) 18%, transparent);
+        opacity: 1;
+    }
+
+    .chorus-repeat.active {
+        color: var(--secondary);
     }
 
     .hymn-columns {

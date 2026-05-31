@@ -55,6 +55,13 @@
         if (output.invisible) return "settings.invisible_window"
         return "output.state_inactive"
     }
+
+    function getOutputLabel(output: Output) {
+        const name = String(output.name || "").trim()
+        if (output.stageOutput && (!name || ["default", "normal", "सामान्य"].includes(name.toLowerCase()))) return "Worship Leader"
+        if (!output.stageOutput && (!name || ["primary", "output"].includes(name.toLowerCase()))) return "Audience"
+        return name
+    }
 </script>
 
 {#if outs.length > 1}
@@ -65,7 +72,7 @@
                 {#if output.stageOutput}<Icon id="stage" size={0.8} white />{/if}
                 <!-- {#if !allSameState && $outputState.find((a) => a.id === output.id)?.active}<Icon id="check" />{/if} -->
 
-                <p style={output.active ? "" : "text-decoration: line-through;"}>{output.name}</p>
+                <p style={output.active ? "" : "text-decoration: line-through;"}>{getOutputLabel(output)}</p>
             </MaterialButton>
         {/each}
     </div>

@@ -71,7 +71,7 @@ export function createData(paths: MainFilePaths) {
     // translate names set in defaults.ts
     if (get(outputs).default?.name === "Primary") {
         outputs.update((a) => {
-            a.default.name = translateText("theme.primary")
+            a.default.name = "Audience"
             return a
         })
     }

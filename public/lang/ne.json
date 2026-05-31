@@ -102,7 +102,7 @@
         "header": "माथिल्लो भाग",
         "text": "टेक्स्ट",
         "big": "ठूलो",
-        "default": "सामान्य",
+        "default": "Default (सामान्य)",
         "small": "सानो",
         "bold": "बाक्लो"
     },
@@ -186,7 +186,7 @@
         "edge_blending": "किनारा मिलाउने",
         "identify_screens": "स्क्रिन चिन्ह लगाउनुहोस्",
         "new_output": "नयाँ आउटपुट",
-        "normal": "सामान्य",
+        "normal": "Normal (सामान्य)",
         "enable_key_output": "अल्फा key आउटपुट चालु",
         "always_on_top": "सधैं माथि",
         "kiosk_mode": "कियोस्क मोड",

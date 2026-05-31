@@ -153,7 +153,7 @@
 
             toggleOutputEnabled.set(true) // disable preview output transitions (to prevent visual svelte bug)
             setTimeout(() => {
-                let id = enableStageOutput({ stageOutput: stageId, name: stageLayout?.name || "" })
+                let id = enableStageOutput({ stageOutput: stageId, name: getStageOutputName(stageLayout?.name || "") })
                 currentOutputSettings.set(id)
             }, 100)
         } else if (type === "normal") {
@@ -168,6 +168,19 @@
     }
 
     let edit: any
+
+    function getStageOutputName(layoutName: string) {
+        const name = String(layoutName || "").trim()
+        if (!name || ["default", "normal", "सामान्य"].includes(name.toLowerCase())) return "Worship Leader"
+        return `Worship Leader - ${name}`
+    }
+
+    function getOutputLabel(output: Output) {
+        const name = String(output.name || "").trim()
+        if (output.stageOutput && (!name || ["default", "normal", "सामान्य"].includes(name.toLowerCase()))) return "Worship Leader"
+        if (!output.stageOutput && (!name || name.toLowerCase() === "primary")) return "Audience"
+        return name
+    }
 </script>
 
 <!-- <InputRow style="background-color: var(--primary);">
@@ -180,7 +193,7 @@
 <Tabs id="output" tabs={outputsList} value={$currentOutputSettings || ""} newLabel="settings.new_output" class="context #output_screen" on:open={(e) => currentOutputSettings.set(e.detail)} on:create={createOutput} let:tab>
     {#if tab.stageOutput}<Icon id="stage" right />{/if}
     {#if tab.enabled !== false}<Icon id="check" size={0.7} white right />{/if}
-    <HiddenInput value={tab.name} id={"output_" + tab.id} on:edit={(e) => updateOutput("name", e.detail.value, tab.id)} bind:edit />
+    <HiddenInput value={getOutputLabel(tab)} id={"output_" + tab.id} on:edit={(e) => updateOutput("name", e.detail.value, tab.id)} bind:edit />
 
     {#if tab.color}
         <div class="color" style="--color: {tab.color};"></div>

@@ -23,8 +23,9 @@
 
     // enable output window dragging
     let enableOutputMove = false
+    $: hideCursorInOutput = $special.hideCursor !== false && !enableOutputMove
     function mousemoveOutput(e: MouseEvent) {
-        if ($outputs[outputId]?.boundsLocked || $special.hideCursor) return
+        if ($outputs[outputId]?.boundsLocked) return
         if (e.ctrlKey || e.metaKey || e.target?.closest(".dragger")) enableOutputMove = true
         else enableOutputMove = false
     }
@@ -42,7 +43,7 @@
 <div
     class="fill context #output_window"
     style="flex-direction: {getStyleResolution(resolution, width, height, 'fit').includes('width') && !Object.values($outputs)[0]?.stageOutput ? 'row' : 'column'};"
-    class:hideCursor={$special.hideCursor}
+    class:hideCursor={hideCursorInOutput}
     on:mousemove={mousemoveOutput}
     bind:offsetWidth={width}
     bind:offsetHeight={height}

@@ -47,7 +47,7 @@
 
 <div style="min-width: 650px;">
     {#if !currentOutput?.invisible}
-        {#if !$special.hideCursor}
+        {#if $special.hideCursor === false}
             <p class="tip"><T id="settings.manual_drag_hint" /></p>
         {/if}
 

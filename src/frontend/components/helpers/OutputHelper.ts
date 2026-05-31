@@ -7,6 +7,7 @@ import { AudioPlayer } from "../../audio/audioPlayer"
 import { sendMain } from "../../IPC/main"
 import { activeFocus, activeProject, activeShow, focusMode, outLocked, outputs, projects, showsCache, special } from "../../stores"
 import { playFolder, togglePlayingMedia } from "../../utils/shortcuts"
+import { isNepaliHymn } from "../../utils/hymns"
 import { openProjectItem } from "../show/project"
 import { clone } from "./array"
 import { getAllActiveOutputIds, setOutput } from "./output"
@@ -309,6 +310,9 @@ export class OutputHelper {
         const showSlide: Slide | null = _show(data.id).slides([layoutRef?.[data.index]?.id]).get()?.[0] || null
 
         let outSlideData: OutSlide = { id: data.id }
+        if (data.repeatChorusResumeIndex !== undefined && this.isChorusGroup(this.getSlideGroup(data.id, layoutRef[data.index]))) {
+            outSlideData.repeatChorusResumeIndex = data.repeatChorusResumeIndex
+        }
 
         const styleLines = this.checkStyleLines(data, showSlide)
         const clickReveal = this.checkClickReveal(data, showSlide)
@@ -319,14 +323,73 @@ export class OutputHelper {
             if (clickReveal.shouldReveal) outSlideData.itemClickReveal = true
             if (clickReveal.isRevealed && linesReveal.shouldReveal) outSlideData.revealCount = linesReveal.nextReveal
         } else {
+            const repeatedChorusNext = this.getRepeatedChorusNextSlide(data, layoutRef)
+            if (repeatedChorusNext) return repeatedChorusNext
+
+            const previousIndex = data.index
+
             // loop to start
             if (layoutRef[data.index]?.data?.end) data.index = -1
 
             data.index++
             while (layoutRef[data.index]?.data?.disabled) data.index++
+
+            const chorusSlide = this.getRepeatChorusSlide(data, layoutRef, previousIndex)
+            if (chorusSlide) return chorusSlide
         }
 
         return layoutRef[data.index] ? { layout: data.layout, index: data.index, ...outSlideData } : null
+    }
+
+    private static getRepeatedChorusNextSlide(data: OutSlide, layoutRef: any[]): OutSlide | null {
+        if (data.repeatChorusResumeIndex === undefined || typeof data.index !== "number") return null
+        if (!this.isChorusGroup(this.getSlideGroup(data.id, layoutRef[data.index]))) return null
+
+        let nextIndex = data.index + 1
+        while (layoutRef[nextIndex]?.data?.disabled) nextIndex++
+
+        if (this.isChorusGroup(this.getSlideGroup(data.id, layoutRef[nextIndex]))) {
+            return { id: data.id, layout: data.layout, index: nextIndex, repeatChorusResumeIndex: data.repeatChorusResumeIndex }
+        }
+
+        if (data.repeatChorusResumeIndex === null) return null
+        return layoutRef[data.repeatChorusResumeIndex] ? { id: data.id, layout: data.layout, index: data.repeatChorusResumeIndex } : null
+    }
+
+    private static getRepeatChorusSlide(data: OutSlide, layoutRef: any[], previousIndex: number): OutSlide | null {
+        if (!get(special).repeatChorusAfterVerse || typeof data.index !== "number") return null
+
+        const currentShow = get(showsCache)[data.id]
+        if (!currentShow || !isNepaliHymn({ id: data.id, ...currentShow })) return null
+
+        const previousGroup = this.getSlideGroup(data.id, layoutRef[previousIndex])
+        const nextGroup = this.getSlideGroup(data.id, layoutRef[data.index])
+
+        if (!this.isVerseGroup(previousGroup)) return null
+        if (this.isChorusGroup(nextGroup)) return null
+
+        const chorusIndex = this.getFirstChorusIndex(data.id, layoutRef)
+        if (chorusIndex === null || chorusIndex === previousIndex) return null
+
+        return { id: data.id, layout: data.layout, index: chorusIndex, repeatChorusResumeIndex: layoutRef[data.index] ? data.index : null }
+    }
+
+    private static getFirstChorusIndex(showId: string, layoutRef: any[]) {
+        const index = layoutRef.findIndex((ref) => !ref?.data?.disabled && this.isChorusGroup(this.getSlideGroup(showId, ref)))
+        return index < 0 ? null : index
+    }
+
+    private static getSlideGroup(showId: string, ref: any) {
+        if (!ref) return ""
+        return String(_show(showId).slides([ref.id]).get()?.[0]?.globalGroup || _show(showId).slides([ref.id]).get()?.[0]?.group || "").toLowerCase()
+    }
+
+    private static isVerseGroup(group: string) {
+        return group === "verse" || group.startsWith("verse_") || group.startsWith("verse ")
+    }
+
+    private static isChorusGroup(group: string) {
+        return group === "chorus" || group.startsWith("chorus_") || group.startsWith("chorus ")
     }
 
     private static getPreviousSlide(data: OutSlide | null): OutSlide | null {

@@ -15,5 +15,5 @@
 <MaterialToggleSwitch label="settings.auto_output" checked={$autoOutput} defaultValue={false} on:change={(e) => autoOutput.set(e.detail)} />
 <!-- apparently doesn't work on some versions of macOS -->
 {#if $os.platform !== "darwin" || $special.hideCursor}
-    <MaterialToggleSwitch label="settings.hide_cursor_in_output" checked={$special.hideCursor} defaultValue={false} on:change={(e) => updateSpecial(e.detail, "hideCursor")} />
+    <MaterialToggleSwitch label="settings.hide_cursor_in_output" checked={$special.hideCursor !== false} defaultValue={true} on:change={(e) => updateSpecial(e.detail, "hideCursor", true)} />
 {/if}

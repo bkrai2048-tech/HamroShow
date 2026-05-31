@@ -578,6 +578,7 @@ export interface OutSlide {
     line?: number // styles limit lines
     revealCount?: number // reveal one by one line
     itemClickReveal?: boolean // reveal item on click
+    repeatChorusResumeIndex?: number | null
     // layout: ID ?
     name?: string // mostly used for PDFs
     type?: ShowType // mostly used for PDFs

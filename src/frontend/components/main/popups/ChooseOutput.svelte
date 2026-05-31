@@ -4,8 +4,8 @@
     import MaterialMultiChoice from "../../inputs/MaterialMultiChoice.svelte"
 
     const outputTypes = [
-        { id: "normal", name: translateText("settings.normal"), icon: "display_settings" },
-        { id: "stage", name: translateText("menu.stage"), icon: "stage" }
+        { id: "normal", name: "Audience / Projector", icon: "display_settings", title: translateText("settings.normal") },
+        { id: "stage", name: "Worship Leader / Stage", icon: "stage", title: translateText("menu.stage") }
     ]
 
     function selectOutput(id) {
