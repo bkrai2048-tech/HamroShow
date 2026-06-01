@@ -5,7 +5,7 @@
     import { Main } from "../../../../types/IPC/Main"
     import { requestMain } from "../../../IPC/main"
     import { type CameraData, cameraManager } from "../../../media/cameraManager"
-    import { outLocked, outputs, playerVideos, special } from "../../../stores"
+    import { activeDrawerTab, activeRecording, outLocked, outputs, playerVideos, special } from "../../../stores"
     import { destroy, receive, send } from "../../../utils/request"
     import Icon from "../../helpers/Icon.svelte"
     import { getFirstActiveOutput, setOutput } from "../../helpers/output"
@@ -20,6 +20,7 @@
     import Cam from "./Cam.svelte"
     import Capture from "./Capture.svelte"
     import NDIStream from "./NDIStream.svelte"
+    import { stopMediaRecorder } from "./recorder"
 
     export let searchValue = ""
     export let streams: MediaStream[] = []
@@ -220,6 +221,44 @@
         clearBackground()
     }
 
+    function buildRecordingConstraints(source: SwitcherSource | null) {
+        if (!source) return null
+        if (source.type === "camera") {
+            return { video: { deviceId: { exact: source.id } }, audio: false }
+        }
+        if (source.type === "screen") {
+            return {
+                video: {
+                    mandatory: {
+                        chromeMediaSource: "desktop",
+                        chromeMediaSourceId: source.id,
+                        maxWidth: 1920,
+                        maxHeight: 1080,
+                        maxFrameRate: 60
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    $: recordSource = previewSource || programSource
+    $: recordConstraints = buildRecordingConstraints(recordSource)
+    $: isRecording = !!$activeRecording
+
+    function toggleRecord() {
+        if (isRecording) {
+            stopMediaRecorder()
+            return
+        }
+        if (!recordConstraints) return
+        activeRecording.set(recordConstraints)
+    }
+
+    function openObsTab() {
+        activeDrawerTab.set("obs")
+    }
+
     function matchesSearch(source: SwitcherSource) {
         const search = normalize(searchValue)
         if (!search) return true
@@ -373,6 +412,14 @@
             <MaterialButton variant="outlined" title="Refresh live sources" disabled={anyLoading} on:click={() => refreshAll(true)}>
                 <Icon id="reset" white />
                 <span>Refresh</span>
+            </MaterialButton>
+            <MaterialButton variant="outlined" title="Stream via OBS Studio" on:click={openObsTab}>
+                <Icon id="stage" white />
+                <span>Stream</span>
+            </MaterialButton>
+            <MaterialButton variant={isRecording ? "contained" : "outlined"} title={isRecording ? "Stop recording" : recordConstraints ? `Record ${recordSource?.name || "source"}` : "Select a camera or screen in Preview to record"} disabled={!isRecording && !recordConstraints} red={isRecording} on:click={toggleRecord}>
+                <Icon id={isRecording ? "stop" : "record"} white />
+                <span>{isRecording ? "Stop" : "Record"}</span>
             </MaterialButton>
             <MaterialButton variant="outlined" title="Clear program" disabled={!programBackground || $outLocked} red on:click={clearProgram}>
                 <Icon id="clear" white />

@@ -43,7 +43,7 @@ async function handleStop() {
     const blob = new Blob(recordedChunks, options)
     const arraybuffer = await blob.arrayBuffer()
 
-    const name = `FreeShow_${formatTime()}.webm`
+    const name = `HamroShow_${formatTime()}.webm`
     sendMain(Main.RECORDER, { blob: arraybuffer, name })
 
     currentRecordingStream.set(null)
