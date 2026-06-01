@@ -24,7 +24,7 @@ import { libreConvert } from "../output/ppt/libreConverter"
 import { getPresentationApplications, presentationControl, startSlideshow } from "../output/ppt/presentation"
 import { closeServers, startServers, updateServerData } from "../servers"
 import { processAudioData, timecodeStart, timecodeStop, updateTimecodeValue } from "../timecode/timecode"
-import { checkFfmpeg, startStream, stopStream, writeStreamChunk } from "../stream/RtmpStreamer"
+import { checkFfmpeg, getStreamState, startStream, stopStream, writeStreamChunk } from "../stream/RtmpStreamer"
 import { apiReturnData, emitOSC, startWebSocketAndRest, stopApiListener } from "../utils/api"
 import { closeMain } from "../utils/close"
 import { addToMediaFolder, bundleMediaFiles, getDataFolderPath, getDataFolderRoot, getFileInfo, getMediaCodec, getMediaSyncFolderPath, getMediaTracks, getPaths, getSimularPaths, loadFile, loadShowsAsync, locateMediaFile, openInSystem, readExifData, readFile, readFolder, readFolderContent, selectFiles, selectFilesDialog, selectFolder, setMediaSyncFolderPath, writeFile } from "../utils/files"
@@ -159,6 +159,7 @@ export const mainResponses: MainResponses = {
     [Main.STREAM_START]: (data) => startStream(data),
     [Main.STREAM_DATA]: (data) => writeStreamChunk(data),
     [Main.STREAM_STOP]: () => stopStream(),
+    [Main.STREAM_GET_STATE]: async () => getStreamState(),
     [Main.STREAM_STATUS]: () => {},
     [Main.STREAM_LIST_OUTPUTS]: async () => listOutputCaptureSources(),
     [Main.SYSTEM_OPEN]: (data) => openInSystem(data),

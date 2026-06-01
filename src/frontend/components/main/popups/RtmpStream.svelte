@@ -51,6 +51,7 @@
 
     let mediaStream: MediaStream | null = null
     let recorder: MediaRecorder | null = null
+    let detachedOutputStream = false
     let statusListenerId: string | null = null
     let chunkWatchdog: ReturnType<typeof setTimeout> | null = null
     let sentChunks = 0
@@ -230,6 +231,7 @@
 
             streaming = true
             starting = false
+            detachedOutputStream = true
             startedAt = Date.now()
             elapsed = "00:00"
             elapsedTimer = setInterval(tickElapsed, 1000)
@@ -316,6 +318,7 @@
     function stopStreaming(finalMessage = "Stream stopped.", finalKind: "info" | "error" = "info") {
         const wasActive = streaming || starting
         starting = false
+        detachedOutputStream = false
         if (recorder && recorder.state !== "inactive") {
             try { recorder.stop() } catch { /* */ }
         }
@@ -347,6 +350,18 @@
     onMount(() => {
         detectFfmpeg()
         refreshCaptureSources()
+        requestMain(Main.STREAM_GET_STATE).then((state) => {
+            if (!state?.active) return
+            streaming = true
+            starting = false
+            detachedOutputStream = state.mode === "output"
+            startedAt = state.startedAt || Date.now()
+            tickElapsed()
+            if (elapsedTimer) clearInterval(elapsedTimer)
+            elapsedTimer = setInterval(tickElapsed, 1000)
+            statusMsg = state.mode === "output" ? "Audience output is streaming. You can close this window and keep controlling HamroShow." : "RTMP stream is already running."
+            statusKind = "info"
+        })
         statusListenerId = receiveMain(Main.STREAM_STATUS, (payload: any) => {
             if (!payload) return
             if (payload.state === "error") {
@@ -369,13 +384,13 @@
         if (statusListenerId) {
             try { window.api.removeListener(MAIN, statusListenerId) } catch { /* */ }
         }
-        if (streaming) stopStreaming()
+        if (streaming && !detachedOutputStream) stopStreaming()
         else cleanupStream()
         if (elapsedTimer) clearInterval(elapsedTimer)
     })
 
     function close() {
-        if (streaming) {
+        if (streaming && !detachedOutputStream) {
             const ok = confirm("Stop the live stream and close this window?")
             if (!ok) return
             stopStreaming()

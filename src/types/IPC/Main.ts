@@ -169,6 +169,7 @@ export enum Main {
     STREAM_START = "STREAM_START",
     STREAM_DATA = "STREAM_DATA",
     STREAM_STOP = "STREAM_STOP",
+    STREAM_GET_STATE = "STREAM_GET_STATE",
     STREAM_STATUS = "STREAM_STATUS",
     STREAM_LIST_OUTPUTS = "STREAM_LIST_OUTPUTS"
 }
@@ -268,6 +269,7 @@ export interface MainSendPayloads {
     [Main.STREAM_START]: { rtmpUrl: string; mimeType: string; capture?: { type: "output"; id: string } }
     [Main.STREAM_DATA]: ArrayBuffer
     [Main.STREAM_STOP]: undefined
+    [Main.STREAM_GET_STATE]: undefined
 }
 
 export interface MainReturnPayloads {
@@ -364,6 +366,7 @@ export interface MainReturnPayloads {
     // RTMP Stream
     [Main.STREAM_CHECK_FFMPEG]: Promise<{ available: boolean; path?: string; version?: string }>
     [Main.STREAM_START]: Promise<{ started: boolean; error?: string }>
+    [Main.STREAM_GET_STATE]: Promise<{ active: boolean; mode?: "output" | "webm"; startedAt?: number; bytesWritten?: number; chunksWritten?: number }>
     [Main.STREAM_STATUS]: { state: "starting" | "live" | "stopped" | "error"; message?: string } | void
     [Main.STREAM_LIST_OUTPUTS]: Promise<Array<{ id: string; name: string; sourceId?: string }>>
 }

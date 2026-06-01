@@ -24,8 +24,20 @@ let stopRequested = false
 let bytesWritten = 0
 let chunksWritten = 0
 let lastProgressAt = 0
+let streamStartedAt = 0
+let streamMode: "output" | "webm" | null = null
 let outputCaptureTimer: ReturnType<typeof setInterval> | null = null
 let outputCaptureBusy = false
+
+export function getStreamState() {
+    return {
+        active: !!proc,
+        mode: streamMode || undefined,
+        startedAt: streamStartedAt || undefined,
+        bytesWritten,
+        chunksWritten
+    }
+}
 
 export async function checkFfmpeg(): Promise<{ available: boolean; path?: string; version?: string }> {
     if (detectAttempted && ffmpegPath) {
@@ -107,6 +119,8 @@ export async function startStream(opts: StreamStartOptions): Promise<{ started: 
     bytesWritten = 0
     chunksWritten = 0
     lastProgressAt = 0
+    streamStartedAt = Date.now()
+    streamMode = outputWindow ? "output" : "webm"
 
     proc.stderr.on("data", (chunk) => {
         const text = sanitizeFfmpegOutput(chunk.toString())
@@ -118,6 +132,8 @@ export async function startStream(opts: StreamStartOptions): Promise<{ started: 
     proc.on("error", (err) => {
         stopOutputCapture()
         sendMain(Main.STREAM_STATUS, { state: "error", message: `FFmpeg error: ${err.message}` })
+        streamMode = null
+        streamStartedAt = 0
         proc = null
     })
 
@@ -125,6 +141,8 @@ export async function startStream(opts: StreamStartOptions): Promise<{ started: 
         stopOutputCapture()
         const msg = code === 0 || stopRequested ? "Stream stopped." : getFfmpegCloseMessage(code)
         sendMain(Main.STREAM_STATUS, { state: code === 0 || stopRequested ? "stopped" : "error", message: msg })
+        streamMode = null
+        streamStartedAt = 0
         proc = null
     })
 
