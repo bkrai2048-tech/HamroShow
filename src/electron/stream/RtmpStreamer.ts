@@ -1,10 +1,13 @@
 import type { ChildProcessWithoutNullStreams } from "child_process"
-import { exec, spawn } from "child_process"
+import { exec, execFile, spawn } from "child_process"
+import { existsSync } from "fs"
+import path from "path"
 import { promisify } from "util"
 import { Main } from "../../types/IPC/Main"
 import { sendMain } from "../IPC/main"
 
 const execAsync = promisify(exec)
+const execFileAsync = promisify(execFile)
 
 let ffmpegPath: string | null = null
 let detectAttempted = false
@@ -19,7 +22,13 @@ export async function checkFfmpeg(): Promise<{ available: boolean; path?: string
     detectAttempted = true
 
     const isWin = process.platform === "win32"
-    const lookup = isWin ? "where ffmpeg" : "which ffmpeg"
+    const localPath = getLocalFfmpegPath()
+    if (localPath) {
+        ffmpegPath = localPath
+        return { available: true, path: ffmpegPath, version: await getFfmpegVersion(ffmpegPath) }
+    }
+
+    const lookup = isWin ? "where.exe ffmpeg" : "which ffmpeg"
 
     try {
         const { stdout } = await execAsync(lookup, { timeout: 5000 })
@@ -27,17 +36,30 @@ export async function checkFfmpeg(): Promise<{ available: boolean; path?: string
         if (!found) return { available: false }
 
         ffmpegPath = found
-        let version: string | undefined
-        try {
-            const { stdout: verOut } = await execAsync(`"${found}" -version`, { timeout: 5000 })
-            version = verOut.split(/\r?\n/)[0]
-        } catch {
-            // ignore
-        }
-        return { available: true, path: ffmpegPath, version }
+        return { available: true, path: ffmpegPath, version: await getFfmpegVersion(ffmpegPath) }
     } catch {
         ffmpegPath = null
         return { available: false }
+    }
+}
+
+function getLocalFfmpegPath() {
+    const executableName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg"
+    const candidates = [
+        path.join(path.dirname(process.execPath), "bin", executableName),
+        path.join(process.resourcesPath || "", "..", "bin", executableName),
+        path.join(process.cwd(), "bin", executableName)
+    ]
+
+    return candidates.find((candidate) => candidate && existsSync(candidate)) || ""
+}
+
+async function getFfmpegVersion(executablePath: string) {
+    try {
+        const { stdout } = await execFileAsync(executablePath, ["-version"], { timeout: 5000 })
+        return stdout.split(/\r?\n/)[0]
+    } catch {
+        return undefined
     }
 }
 

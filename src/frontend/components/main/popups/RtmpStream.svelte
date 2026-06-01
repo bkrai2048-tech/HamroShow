@@ -13,6 +13,13 @@
         help?: string
     }
 
+    interface CaptureSource {
+        id: string
+        name: string
+        type: "screen" | "window" | "camera"
+        section: string
+    }
+
     const presets: Preset[] = [
         { id: "youtube", label: "YouTube Live", url: "rtmp://a.rtmp.youtube.com/live2", help: "Get your stream key from YouTube Studio → Go Live." },
         { id: "facebook", label: "Facebook Live", url: "rtmps://live-api-s.facebook.com:443/rtmp", help: "Get your stream key from facebook.com/live/producer." },
@@ -28,6 +35,10 @@
     let rtmpUrl: string = $special.rtmpUrl || presets[0].url
     let streamKey = ""
 
+    let captureSources: CaptureSource[] = []
+    let captureSourceId: string = $special.rtmpCaptureSourceId || ""
+    let loadingSources = false
+
     let streaming = false
     let starting = false
     let statusMsg = ""
@@ -41,6 +52,7 @@
     let statusListenerId: string | null = null
 
     $: preset = presets.find((p) => p.id === presetId) || presets[0]
+    $: selectedCaptureSource = captureSources.find((source) => captureValue(source) === captureSourceId) || null
 
     function selectPreset(id: string) {
         presetId = id
@@ -81,10 +93,58 @@
         }
     }
 
-    async function getCaptureStream(): Promise<MediaStream> {
-        // Let user pick a screen/window via the browser picker. Audio = true requests system audio (where supported).
-        // @ts-ignore — getDisplayMedia exists in Electron 30+
-        return await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: true })
+    async function refreshCaptureSources() {
+        loadingSources = true
+
+        try {
+            const [screens, windows] = await Promise.all([requestMain(Main.GET_SCREENS), requestMain(Main.GET_WINDOWS)])
+            const devices = await navigator.mediaDevices.enumerateDevices().catch(() => [])
+            const cameras = devices.filter((device) => device.kind === "videoinput")
+
+            captureSources = [
+                ...(screens || []).map((source) => ({ id: source.id, name: source.name, type: "screen" as const, section: "Screens" })),
+                ...(windows || []).map((source) => ({ id: source.id, name: source.name, type: "window" as const, section: "Windows" })),
+                ...cameras.map((source, index) => ({ id: source.deviceId, name: source.label || `Camera ${index + 1}`, type: "camera" as const, section: "Cameras" }))
+            ]
+
+            if (!captureSources.find((source) => captureValue(source) === captureSourceId)) captureSourceId = captureSources[0] ? captureValue(captureSources[0]) : ""
+        } finally {
+            loadingSources = false
+        }
+    }
+
+    function captureValue(source: CaptureSource) {
+        return `${source.type}:${source.id}`
+    }
+
+    function captureTypeLabel(type: CaptureSource["type"]) {
+        if (type === "screen") return "Screen"
+        if (type === "window") return "Window"
+        return "Camera"
+    }
+
+    async function getCaptureStream(source: CaptureSource): Promise<MediaStream> {
+        if (source.type === "camera") {
+            return await navigator.mediaDevices.getUserMedia({
+                video: { deviceId: { exact: source.id }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30, max: 60 } },
+                audio: false
+            })
+        }
+
+        const constraints: any = {
+            audio: false,
+            video: {
+                mandatory: {
+                    chromeMediaSource: "desktop",
+                    chromeMediaSourceId: source.id,
+                    maxWidth: 1920,
+                    maxHeight: 1080,
+                    maxFrameRate: 30
+                }
+            }
+        }
+
+        return await navigator.mediaDevices.getUserMedia(constraints)
     }
 
     function pickMimeType(): string {
@@ -116,22 +176,30 @@
             await detectFfmpeg()
             if (ffmpegAvailable !== true) return
         }
+        if (!selectedCaptureSource) {
+            await refreshCaptureSources()
+            if (!selectedCaptureSource) {
+                statusMsg = "No capture source found. Click Refresh and select a screen, window, or camera."
+                statusKind = "error"
+                return
+            }
+        }
 
         starting = true
-        statusMsg = "Requesting capture source…"
+        statusMsg = `Opening ${captureTypeLabel(selectedCaptureSource.type).toLowerCase()} capture…`
         statusKind = "info"
 
         try {
-            mediaStream = await getCaptureStream()
+            mediaStream = await getCaptureStream(selectedCaptureSource)
         } catch (err: any) {
             starting = false
-            statusMsg = `Capture cancelled: ${err?.message || err}`
+            statusMsg = `Could not capture ${selectedCaptureSource.name}: ${err?.message || err}`
             statusKind = "error"
             return
         }
 
-        // Persist URL + preset (NOT the stream key)
-        special.update((s) => ({ ...s, rtmpUrl, rtmpPreset: presetId }))
+        // Persist URL + preset + source selection (NOT the stream key)
+        special.update((s) => ({ ...s, rtmpUrl, rtmpPreset: presetId, rtmpCaptureSourceId: captureSourceId }))
 
         const fullUrl = joinUrlAndKey(rtmpUrl, streamKey)
         const mimeType = pickMimeType()
@@ -218,6 +286,7 @@
 
     onMount(() => {
         detectFfmpeg()
+        refreshCaptureSources()
         statusListenerId = receiveMain(Main.STREAM_STATUS, (payload: any) => {
             if (!payload) return
             if (payload.state === "error") {
@@ -270,6 +339,25 @@
             FFmpeg detected{ffmpegVersion ? `: ${ffmpegVersion}` : ""}.
         </div>
     {/if}
+
+    <div class="field">
+        <label for="capture-source">Capture source</label>
+        <div class="source-row">
+            <select id="capture-source" bind:value={captureSourceId} disabled={streaming || starting || loadingSources}>
+                {#if !captureSources.length}
+                    <option value="">No capture sources found</option>
+                {:else}
+                    {#each captureSources as source (captureValue(source))}
+                        <option value={captureValue(source)}>{captureTypeLabel(source.type)}: {source.name}</option>
+                    {/each}
+                {/if}
+            </select>
+            <MaterialButton variant="outlined" disabled={streaming || starting || loadingSources} on:click={refreshCaptureSources}>
+                <Icon id="reset" white /> <span>{loadingSources ? "Loading" : "Refresh"}</span>
+            </MaterialButton>
+        </div>
+        <p class="hint">Choose the screen, window, or camera HamroShow should send to Facebook.</p>
+    </div>
 
     <div class="field">
         <label>Platform</label>
@@ -346,7 +434,8 @@
         font-size: 0.85em;
         opacity: 0.8;
     }
-    .field input {
+    .field input,
+    .field select {
         padding: 8px 10px;
         background: var(--primary-darker);
         border: 1px solid var(--secondary-opacity);
@@ -355,8 +444,19 @@
         font-size: 0.95em;
         font-family: inherit;
     }
-    .field input:disabled {
+    .field input:disabled,
+    .field select:disabled {
         opacity: 0.6;
+    }
+    .source-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: stretch;
+    }
+    .source-row :global(button) {
+        height: 100%;
+        white-space: nowrap;
     }
     .preset-row {
         display: flex;

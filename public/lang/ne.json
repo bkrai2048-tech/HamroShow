@@ -304,7 +304,8 @@
         "reset_all": "Reset everything (सबै रिसेट)",
         "quit": "Quit without saving (सेभ नगरी बाहिरिनुहोस्)",
         "save_quit": "Save & Quit (सेभ गरेर बाहिरिनुहोस्)",
-        "import_scripture": "Import scripture (बाइबल आयात)"
+        "import_scripture": "Import scripture (बाइबल आयात)",
+        "rtmp_stream": "RTMP stream (RTMP स्ट्रिम)"
     },
     "media": {
         "volume": "Volume (भोल्युम)"
