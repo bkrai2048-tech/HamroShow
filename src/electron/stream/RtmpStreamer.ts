@@ -83,7 +83,9 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
 
     const args = [
         "-hide_banner",
-        "-loglevel", "warning",
+        "-loglevel", "error",
+        "-re",
+        "-fflags", "+genpts",
         "-thread_queue_size", "1024",
         "-f", "webm",
         "-i", "pipe:0",
@@ -94,10 +96,12 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-tune", "zerolatency",
-        "-pix_fmt", "yuv420p",
-        "-r", "30",
+        "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
+        "-profile:v", "main",
+        "-level", "4.0",
         "-g", "60",
         "-keyint_min", "60",
+        "-x264-params", "keyint=60:min-keyint=60:scenecut=0",
         "-b:v", "3500k",
         "-maxrate", "3500k",
         "-bufsize", "7000k",
@@ -105,9 +109,11 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
         "-ar", "44100",
         "-ac", "2",
         "-b:a", "128k",
+        "-max_muxing_queue_size", "1024",
         "-shortest",
         "-f", "flv",
         "-flvflags", "no_duration_filesize",
+        "-rtmp_live", "live",
         url
     ]
 
@@ -127,7 +133,8 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
     proc.stderr.on("data", (chunk) => {
         const text = sanitizeFfmpegOutput(chunk.toString())
         lastStderr = (lastStderr + text).slice(-2000)
-        if (text.trim()) sendMain(Main.STREAM_STATUS, { state: "live", message: text.trim() })
+        const statusMessage = getFfmpegStatusMessage(text)
+        if (statusMessage) sendMain(Main.STREAM_STATUS, { state: "live", message: statusMessage })
     })
 
     proc.on("error", (err) => {
@@ -136,7 +143,7 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
     })
 
     proc.on("close", (code) => {
-        const msg = code === 0 || stopRequested ? "Stream stopped." : `FFmpeg exited with code ${code}. ${lastStderr || "No FFmpeg details were reported."}`
+        const msg = code === 0 || stopRequested ? "Stream stopped." : getFfmpegCloseMessage(code)
         sendMain(Main.STREAM_STATUS, { state: code === 0 || stopRequested ? "stopped" : "error", message: msg })
         proc = null
     })
@@ -156,6 +163,34 @@ function sanitizeFfmpegOutput(text: string) {
     if (key) clean = clean.replaceAll(key, "[stream-key-hidden]")
 
     return clean
+}
+
+function getFfmpegStatusMessage(text: string) {
+    const trimmed = text.trim()
+    if (!trimmed) return ""
+    if (/more than \d+ frames duplicated/i.test(trimmed)) return ""
+    if (/error|failed|invalid|denied|forbidden|unauthorized|i\/o/i.test(trimmed)) return summarizeFfmpegError(trimmed)
+
+    return ""
+}
+
+function getFfmpegCloseMessage(code: number | null) {
+    const summary = summarizeFfmpegError(lastStderr)
+    if (summary) return summary
+
+    return `FFmpeg exited with code ${code}. ${lastStderr || "No FFmpeg details were reported."}`
+}
+
+function summarizeFfmpegError(text: string) {
+    if (!text.trim()) return ""
+    if (/(?:-10053|i\/o error|specified session has been invalidated|error closing file)/i.test(text)) {
+        return "Facebook closed the RTMPS connection. This usually means the Live Producer stream key/session expired, the stream key does not match this Live Producer page, or Facebook rejected the incoming stream. Create a new Facebook Live video, copy the fresh server URL and stream key, keep Live Producer open, then start streaming again."
+    }
+    if (/(?:401|403|unauthorized|forbidden|permission|auth)/i.test(text)) {
+        return "Facebook rejected the stream credentials. Copy a fresh stream key from the current Facebook Live Producer page and try again."
+    }
+
+    return text.trim()
 }
 
 function getStreamKey(url: string) {
