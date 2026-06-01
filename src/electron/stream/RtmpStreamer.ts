@@ -1,13 +1,18 @@
 import type { ChildProcessWithoutNullStreams } from "child_process"
 import { exec, execFile, spawn } from "child_process"
+import type { BrowserWindow } from "electron"
 import { existsSync } from "fs"
 import path from "path"
 import { promisify } from "util"
 import { Main } from "../../types/IPC/Main"
 import { sendMain } from "../IPC/main"
+import { OutputHelper } from "../output/OutputHelper"
 
 const execAsync = promisify(exec)
 const execFileAsync = promisify(execFile)
+
+type OutputCaptureRequest = { type: "output"; id: string }
+type StreamStartOptions = { rtmpUrl: string; mimeType: string; capture?: OutputCaptureRequest }
 
 let ffmpegPath: string | null = null
 let detectAttempted = false
@@ -19,6 +24,8 @@ let stopRequested = false
 let bytesWritten = 0
 let chunksWritten = 0
 let lastProgressAt = 0
+let outputCaptureTimer: ReturnType<typeof setInterval> | null = null
+let outputCaptureBusy = false
 
 export async function checkFfmpeg(): Promise<{ available: boolean; path?: string; version?: string }> {
     if (detectAttempted && ffmpegPath) {
@@ -68,7 +75,7 @@ async function getFfmpegVersion(executablePath: string) {
     }
 }
 
-export async function startStream(opts: { rtmpUrl: string; mimeType: string }): Promise<{ started: boolean; error?: string }> {
+export async function startStream(opts: StreamStartOptions): Promise<{ started: boolean; error?: string }> {
     if (proc) return { started: false, error: "A stream is already running. Stop it first." }
 
     const url = (opts.rtmpUrl || "").trim()
@@ -81,41 +88,12 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
         return { started: false, error: "FFmpeg not found on PATH. Please install FFmpeg from https://ffmpeg.org/download.html and ensure 'ffmpeg' is on your system PATH." }
     }
 
-    const args = [
-        "-hide_banner",
-        "-loglevel", "error",
-        "-fflags", "+genpts+nobuffer",
-        "-flags", "low_delay",
-        "-thread_queue_size", "1024",
-        "-f", "webm",
-        "-i", "pipe:0",
-        "-f", "lavfi",
-        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
-        "-map", "0:v:0",
-        "-map", "1:a:0",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-tune", "zerolatency",
-        "-vf", "scale='min(1920,iw)':'-2':flags=lanczos,fps=30,format=yuv420p",
-        "-profile:v", "high",
-        "-level", "4.1",
-        "-g", "60",
-        "-keyint_min", "60",
-        "-x264-params", "keyint=60:min-keyint=60:scenecut=0:nal-hrd=cbr",
-        "-b:v", "6000k",
-        "-maxrate", "6000k",
-        "-bufsize", "6000k",
-        "-c:a", "aac",
-        "-ar", "44100",
-        "-ac", "2",
-        "-b:a", "160k",
-        "-max_muxing_queue_size", "1024",
-        "-shortest",
-        "-f", "flv",
-        "-flvflags", "no_duration_filesize",
-        "-rtmp_live", "live",
-        url
-    ]
+    const outputWindow = opts.capture?.type === "output" ? getOutputWindow(opts.capture.id) : null
+    if (opts.capture?.type === "output" && !outputWindow) {
+        return { started: false, error: "Audience output is not open. Turn on the Audience output window, click Refresh, then start streaming again." }
+    }
+
+    const args = outputWindow ? getOutputCaptureArgs(url) : getWebmCaptureArgs(url)
 
     try {
         proc = spawn(ffmpegPath, args, { stdio: ["pipe", "pipe", "pipe"], windowsHide: true })
@@ -138,11 +116,13 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
     })
 
     proc.on("error", (err) => {
+        stopOutputCapture()
         sendMain(Main.STREAM_STATUS, { state: "error", message: `FFmpeg error: ${err.message}` })
         proc = null
     })
 
     proc.on("close", (code) => {
+        stopOutputCapture()
         const msg = code === 0 || stopRequested ? "Stream stopped." : getFfmpegCloseMessage(code)
         sendMain(Main.STREAM_STATUS, { state: code === 0 || stopRequested ? "stopped" : "error", message: msg })
         proc = null
@@ -152,8 +132,108 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
         // swallow EPIPE — close handler will report
     })
 
+    if (outputWindow) startOutputCapture(outputWindow)
+
     sendMain(Main.STREAM_STATUS, { state: "starting" })
     return { started: true }
+}
+
+function getWebmCaptureArgs(url: string) {
+    return [
+        "-hide_banner",
+        "-loglevel", "error",
+        "-re",
+        "-fflags", "+genpts",
+        "-thread_queue_size", "1024",
+        "-f", "webm",
+        "-i", "pipe:0",
+        ...getCommonOutputArgs(url)
+    ]
+}
+
+function getOutputCaptureArgs(url: string) {
+    return [
+        "-hide_banner",
+        "-loglevel", "error",
+        "-thread_queue_size", "1024",
+        "-f", "image2pipe",
+        "-framerate", "30",
+        "-vcodec", "mjpeg",
+        "-i", "pipe:0",
+        ...getCommonOutputArgs(url)
+    ]
+}
+
+function getCommonOutputArgs(url: string) {
+    return [
+        "-f", "lavfi",
+        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-tune", "zerolatency",
+        "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p",
+        "-profile:v", "high",
+        "-level", "4.1",
+        "-g", "60",
+        "-keyint_min", "60",
+        "-x264-params", "keyint=60:min-keyint=60:scenecut=0",
+        "-b:v", "6000k",
+        "-maxrate", "6000k",
+        "-bufsize", "12000k",
+        "-c:a", "aac",
+        "-ar", "44100",
+        "-ac", "2",
+        "-b:a", "160k",
+        "-max_muxing_queue_size", "1024",
+        "-shortest",
+        "-f", "flv",
+        "-flvflags", "no_duration_filesize",
+        "-rtmp_live", "live",
+        url
+    ]
+}
+
+function getOutputWindow(outputId: string) {
+    const output = OutputHelper.getOutput(outputId)
+    if (!output?.window || output.window.isDestroyed()) return null
+    return output.window
+}
+
+function startOutputCapture(window: BrowserWindow) {
+    if (window.isMinimized()) window.restore()
+    if (!window.isVisible()) window.showInactive()
+
+    void captureOutputFrame(window)
+    outputCaptureTimer = setInterval(() => void captureOutputFrame(window), 33)
+}
+
+async function captureOutputFrame(window: BrowserWindow) {
+    if (!proc || !proc.stdin.writable || outputCaptureBusy || window.isDestroyed()) return
+    outputCaptureBusy = true
+    try {
+        const image = await window.webContents.capturePage()
+        if (!image.isEmpty() && proc?.stdin.writable) {
+            const buffer = image.toJPEG(95)
+            proc.stdin.write(buffer)
+            chunksWritten += 1
+            bytesWritten += buffer.byteLength
+            reportProgress("Capturing HamroShow Audience output")
+        }
+    } catch (err: any) {
+        sendMain(Main.STREAM_STATUS, { state: "error", message: `Could not capture Audience output: ${err?.message || err}` })
+    } finally {
+        outputCaptureBusy = false
+    }
+}
+
+function stopOutputCapture() {
+    if (outputCaptureTimer) {
+        clearInterval(outputCaptureTimer)
+        outputCaptureTimer = null
+    }
+    outputCaptureBusy = false
 }
 
 function sanitizeFfmpegOutput(text: string) {
@@ -208,14 +288,17 @@ export function writeStreamChunk(buffer: ArrayBuffer | Uint8Array) {
         proc.stdin.write(buf)
         chunksWritten += 1
         bytesWritten += buf.byteLength
-
-        const now = Date.now()
-        if (chunksWritten === 1 || now - lastProgressAt > 5000) {
-            lastProgressAt = now
-            sendMain(Main.STREAM_STATUS, { state: "live", message: `Sending ${formatBytes(bytesWritten)} of video data to RTMP server...` })
-        }
+        reportProgress("Sending selected capture source")
     } catch {
         // ignore
+    }
+}
+
+function reportProgress(label: string) {
+    const now = Date.now()
+    if (chunksWritten === 1 || now - lastProgressAt > 5000) {
+        lastProgressAt = now
+        sendMain(Main.STREAM_STATUS, { state: "live", message: `${label}: ${formatBytes(bytesWritten)} sent to RTMP server...` })
     }
 }
 
@@ -227,6 +310,7 @@ function formatBytes(bytes: number) {
 export function stopStream() {
     if (!proc) return
     stopRequested = true
+    stopOutputCapture()
     try {
         proc.stdin.end()
     } catch {

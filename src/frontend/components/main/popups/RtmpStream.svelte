@@ -16,7 +16,7 @@
     interface CaptureSource {
         id: string
         name: string
-        type: "screen" | "window" | "camera"
+        type: "screen" | "window" | "camera" | "output"
         section: string
     }
 
@@ -37,6 +37,8 @@
 
     let captureSources: CaptureSource[] = []
     let captureSourceId: string = $special.rtmpCaptureSourceId || ""
+    const initialCaptureSourceId = captureSourceId
+    let initialOutputPreferenceApplied = false
     let loadingSources = false
 
     let streaming = false
@@ -111,7 +113,7 @@
             const outputSourceIds = new Set((outputs || []).map((o: any) => o.sourceId).filter(Boolean))
             const outputEntries = (outputs || [])
                 .filter((o: any) => o.sourceId)
-                .map((o: any) => ({ id: o.sourceId as string, name: `${o.name} (HamroShow output)`, type: "window" as const, section: "HamroShow outputs" }))
+                .map((o: any) => ({ id: o.id as string, name: `${o.name} (direct HamroShow output)`, type: "output" as const, section: "HamroShow outputs" }))
 
             captureSources = [
                 ...outputEntries,
@@ -120,7 +122,12 @@
                 ...cameras.map((source, index) => ({ id: source.deviceId, name: source.label || `Camera ${index + 1}`, type: "camera" as const, section: "Cameras" }))
             ]
 
-            if (!captureSources.find((source) => captureValue(source) === captureSourceId)) captureSourceId = captureSources[0] ? captureValue(captureSources[0]) : ""
+            if (!initialOutputPreferenceApplied && outputEntries.length && (!initialCaptureSourceId || initialCaptureSourceId.startsWith("screen:") || initialCaptureSourceId.startsWith("window:"))) {
+                captureSourceId = captureValue(outputEntries[0])
+                initialOutputPreferenceApplied = true
+            } else if (!captureSources.find((source) => captureValue(source) === captureSourceId)) {
+                captureSourceId = captureSources[0] ? captureValue(captureSources[0]) : ""
+            }
         } finally {
             loadingSources = false
         }
@@ -131,6 +138,7 @@
     }
 
     function captureTypeLabel(type: CaptureSource["type"]) {
+        if (type === "output") return "Output"
         if (type === "screen") return "Screen"
         if (type === "window") return "Window"
         return "Camera"
@@ -199,8 +207,38 @@
         }
 
         starting = true
-        statusMsg = `Opening ${captureTypeLabel(selectedCaptureSource.type).toLowerCase()} capture…`
         statusKind = "info"
+
+        // Persist URL + preset + source selection (NOT the stream key)
+        special.update((s) => ({ ...s, rtmpUrl, rtmpPreset: presetId, rtmpCaptureSourceId: captureSourceId }))
+
+        const fullUrl = joinUrlAndKey(rtmpUrl, streamKey)
+        const mimeType = pickMimeType()
+        sentChunks = 0
+        sentBytes = 0
+
+        if (selectedCaptureSource.type === "output") {
+            statusMsg = `Starting direct ${selectedCaptureSource.name} capture...`
+            const startResult = await requestMain(Main.STREAM_START, { rtmpUrl: fullUrl, mimeType: "image/jpeg", capture: { type: "output", id: selectedCaptureSource.id } })
+            if (!startResult?.started) {
+                starting = false
+                statusMsg = startResult?.error || "Failed to start stream."
+                statusKind = "error"
+                cleanupStream()
+                return
+            }
+
+            streaming = true
+            starting = false
+            startedAt = Date.now()
+            elapsed = "00:00"
+            elapsedTimer = setInterval(tickElapsed, 1000)
+            statusMsg = "Capturing the HamroShow Audience output directly..."
+            statusKind = "info"
+            return
+        }
+
+        statusMsg = `Opening ${captureTypeLabel(selectedCaptureSource.type).toLowerCase()} capture…`
 
         try {
             mediaStream = await getCaptureStream(selectedCaptureSource)
@@ -210,14 +248,6 @@
             statusKind = "error"
             return
         }
-
-        // Persist URL + preset + source selection (NOT the stream key)
-        special.update((s) => ({ ...s, rtmpUrl, rtmpPreset: presetId, rtmpCaptureSourceId: captureSourceId }))
-
-        const fullUrl = joinUrlAndKey(rtmpUrl, streamKey)
-        const mimeType = pickMimeType()
-        sentChunks = 0
-        sentBytes = 0
 
         statusMsg = "Starting FFmpeg…"
         const startResult = await requestMain(Main.STREAM_START, { rtmpUrl: fullUrl, mimeType })
@@ -392,7 +422,7 @@
                 <Icon id="reset" white /> <span>{loadingSources ? "Loading" : "Refresh"}</span>
             </MaterialButton>
         </div>
-        <p class="hint">Choose the screen, window, or camera HamroShow should send to Facebook. To broadcast the Audience display, open it as a window (top-right output toggle) and pick "Audience (HamroShow output)".</p>
+        <p class="hint">For the church display, open the Audience output, click Refresh, then pick "Audience (direct HamroShow output)".</p>
     </div>
 
     <div class="field">

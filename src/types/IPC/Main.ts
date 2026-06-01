@@ -265,7 +265,7 @@ export interface MainSendPayloads {
     [Main.SPOTIFY_GET_STATE]: undefined
     [Main.SPOTIFY_COMMAND]: { command: "playpause" | "next" | "prev" | "seek" | "setVolume" | "pause"; value?: number }
     // RTMP Stream
-    [Main.STREAM_START]: { rtmpUrl: string; mimeType: string }
+    [Main.STREAM_START]: { rtmpUrl: string; mimeType: string; capture?: { type: "output"; id: string } }
     [Main.STREAM_DATA]: ArrayBuffer
     [Main.STREAM_STOP]: undefined
 }
