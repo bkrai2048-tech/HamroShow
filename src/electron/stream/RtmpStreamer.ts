@@ -14,6 +14,11 @@ let detectAttempted = false
 
 let proc: ChildProcessWithoutNullStreams | null = null
 let lastStderr = ""
+let outputUrl = ""
+let stopRequested = false
+let bytesWritten = 0
+let chunksWritten = 0
+let lastProgressAt = 0
 
 export async function checkFfmpeg(): Promise<{ available: boolean; path?: string; version?: string }> {
     if (detectAttempted && ffmpegPath) {
@@ -79,12 +84,18 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
     const args = [
         "-hide_banner",
         "-loglevel", "warning",
+        "-thread_queue_size", "1024",
         "-f", "webm",
         "-i", "pipe:0",
+        "-f", "lavfi",
+        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+        "-map", "0:v:0",
+        "-map", "1:a:0",
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-tune", "zerolatency",
         "-pix_fmt", "yuv420p",
+        "-r", "30",
         "-g", "60",
         "-keyint_min", "60",
         "-b:v", "3500k",
@@ -92,8 +103,11 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
         "-bufsize", "7000k",
         "-c:a", "aac",
         "-ar", "44100",
+        "-ac", "2",
         "-b:a", "128k",
+        "-shortest",
         "-f", "flv",
+        "-flvflags", "no_duration_filesize",
         url
     ]
 
@@ -104,11 +118,16 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
     }
 
     lastStderr = ""
+    outputUrl = url
+    stopRequested = false
+    bytesWritten = 0
+    chunksWritten = 0
+    lastProgressAt = 0
 
     proc.stderr.on("data", (chunk) => {
-        const text = chunk.toString()
+        const text = sanitizeFfmpegOutput(chunk.toString())
         lastStderr = (lastStderr + text).slice(-2000)
-        sendMain(Main.STREAM_STATUS, { state: "live", message: text.trim() })
+        if (text.trim()) sendMain(Main.STREAM_STATUS, { state: "live", message: text.trim() })
     })
 
     proc.on("error", (err) => {
@@ -117,8 +136,8 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
     })
 
     proc.on("close", (code) => {
-        const msg = code === 0 ? "Stream ended." : `FFmpeg exited with code ${code}. ${lastStderr}`
-        sendMain(Main.STREAM_STATUS, { state: code === 0 ? "stopped" : "error", message: msg })
+        const msg = code === 0 || stopRequested ? "Stream stopped." : `FFmpeg exited with code ${code}. ${lastStderr || "No FFmpeg details were reported."}`
+        sendMain(Main.STREAM_STATUS, { state: code === 0 || stopRequested ? "stopped" : "error", message: msg })
         proc = null
     })
 
@@ -130,18 +149,49 @@ export async function startStream(opts: { rtmpUrl: string; mimeType: string }): 
     return { started: true }
 }
 
+function sanitizeFfmpegOutput(text: string) {
+    let clean = text
+    const key = getStreamKey(outputUrl)
+    if (outputUrl) clean = clean.replaceAll(outputUrl, "[rtmp-url-hidden]")
+    if (key) clean = clean.replaceAll(key, "[stream-key-hidden]")
+
+    return clean
+}
+
+function getStreamKey(url: string) {
+    try {
+        return new URL(url).pathname.split("/").filter(Boolean).pop() || ""
+    } catch {
+        return url.split("/").filter(Boolean).pop() || ""
+    }
+}
+
 export function writeStreamChunk(buffer: ArrayBuffer | Uint8Array) {
     if (!proc || !proc.stdin.writable) return
     const buf = buffer instanceof ArrayBuffer ? Buffer.from(buffer) : Buffer.from(buffer)
     try {
         proc.stdin.write(buf)
+        chunksWritten += 1
+        bytesWritten += buf.byteLength
+
+        const now = Date.now()
+        if (chunksWritten === 1 || now - lastProgressAt > 5000) {
+            lastProgressAt = now
+            sendMain(Main.STREAM_STATUS, { state: "live", message: `Sending ${formatBytes(bytesWritten)} of video data to RTMP server...` })
+        }
     } catch {
         // ignore
     }
 }
 
+function formatBytes(bytes: number) {
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+}
+
 export function stopStream() {
     if (!proc) return
+    stopRequested = true
     try {
         proc.stdin.end()
     } catch {

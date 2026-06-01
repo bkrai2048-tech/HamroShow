@@ -50,6 +50,9 @@
     let mediaStream: MediaStream | null = null
     let recorder: MediaRecorder | null = null
     let statusListenerId: string | null = null
+    let chunkWatchdog: ReturnType<typeof setTimeout> | null = null
+    let sentChunks = 0
+    let sentBytes = 0
 
     $: preset = presets.find((p) => p.id === presetId) || presets[0]
     $: selectedCaptureSource = captureSources.find((source) => captureValue(source) === captureSourceId) || null
@@ -149,9 +152,9 @@
 
     function pickMimeType(): string {
         const candidates = [
-            "video/webm;codecs=vp8,opus",
-            "video/webm;codecs=vp9,opus",
-            "video/webm;codecs=h264,opus",
+            "video/webm;codecs=vp8",
+            "video/webm;codecs=vp9",
+            "video/webm;codecs=h264",
             "video/webm"
         ]
         for (const c of candidates) {
@@ -203,6 +206,8 @@
 
         const fullUrl = joinUrlAndKey(rtmpUrl, streamKey)
         const mimeType = pickMimeType()
+        sentChunks = 0
+        sentBytes = 0
 
         statusMsg = "Starting FFmpeg…"
         const startResult = await requestMain(Main.STREAM_START, { rtmpUrl: fullUrl, mimeType })
@@ -228,18 +233,22 @@
         recorder.ondataavailable = async (ev) => {
             if (!ev.data || ev.data.size === 0) return
             const buf = await ev.data.arrayBuffer()
+            sentChunks += 1
+            sentBytes += ev.data.size
+            if (sentChunks === 1) {
+                statusMsg = "Capture data reached FFmpeg. Waiting for Facebook to accept the stream..."
+                statusKind = "info"
+            }
             sendMain(Main.STREAM_DATA, buf)
         }
 
         recorder.onerror = (ev: any) => {
-            statusMsg = `Recorder error: ${ev?.error?.message || "unknown"}`
-            statusKind = "error"
-            stopStreaming()
+            stopStreaming(`Recorder error: ${ev?.error?.message || "unknown"}`, "error")
         }
 
         // Stop streaming automatically if user ends share via the OS picker
         mediaStream.getVideoTracks().forEach((t) => {
-            t.onended = () => stopStreaming()
+            t.onended = () => stopStreaming("Capture source ended.", "info")
         })
 
         recorder.start(500) // emit chunks every 500ms
@@ -249,8 +258,13 @@
         startedAt = Date.now()
         elapsed = "00:00"
         elapsedTimer = setInterval(tickElapsed, 1000)
-        statusMsg = "Live"
+        statusMsg = "Sending capture data to FFmpeg..."
         statusKind = "info"
+
+        chunkWatchdog = setTimeout(() => {
+            if (!streaming || sentChunks > 0) return
+            stopStreaming("Capture opened, but no video data was produced. Try Refresh and choose a different screen/window source.", "error")
+        }, 7000)
     }
 
     function joinUrlAndKey(url: string, key: string) {
@@ -259,7 +273,9 @@
         return `${cleanUrl}/${cleanKey}`
     }
 
-    function stopStreaming() {
+    function stopStreaming(finalMessage = "Stream stopped.", finalKind: "info" | "error" = "info") {
+        const wasActive = streaming || starting
+        starting = false
         if (recorder && recorder.state !== "inactive") {
             try { recorder.stop() } catch { /* */ }
         }
@@ -269,14 +285,18 @@
             clearInterval(elapsedTimer)
             elapsedTimer = null
         }
-        if (streaming) {
+        if (wasActive) {
             streaming = false
-            statusMsg = "Stream stopped."
-            statusKind = "info"
+            statusMsg = finalMessage
+            statusKind = finalKind
         }
     }
 
     function cleanupStream() {
+        if (chunkWatchdog) {
+            clearTimeout(chunkWatchdog)
+            chunkWatchdog = null
+        }
         if (mediaStream) {
             mediaStream.getTracks().forEach((t) => t.stop())
             mediaStream = null
@@ -290,11 +310,17 @@
         statusListenerId = receiveMain(Main.STREAM_STATUS, (payload: any) => {
             if (!payload) return
             if (payload.state === "error") {
-                statusMsg = payload.message || "Stream error."
-                statusKind = "error"
-                stopStreaming()
+                stopStreaming(payload.message || "Stream error.", "error")
+            } else if (payload.state === "live") {
+                if (payload.message) {
+                    statusMsg = payload.message
+                    statusKind = "info"
+                }
+            } else if (payload.state === "starting") {
+                statusMsg = "Connecting to RTMP server..."
+                statusKind = "info"
             } else if (payload.state === "stopped") {
-                if (streaming) stopStreaming()
+                if (streaming) stopStreaming(payload.message || "Stream stopped.", "info")
             }
         })
     })
