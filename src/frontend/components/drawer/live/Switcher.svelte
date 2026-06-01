@@ -61,6 +61,7 @@
     let webUrl = ""
     let webName = ""
     let webUrlError = ""
+    let showAdvancedStreaming = false
 
     const NDI_RECEIVER_ID = "LIVE_SWITCHER_NDI"
     const BLACKMAGIC_RECEIVER_ID = "LIVE_SWITCHER_BLACKMAGIC"
@@ -421,9 +422,9 @@
                 <Icon id="stage" white />
                 <span>OBS</span>
             </MaterialButton>
-            <MaterialButton variant="outlined" title="Stream directly to YouTube / Facebook / Twitch / custom RTMP" on:click={openRtmpStream}>
+            <MaterialButton variant="outlined" title="Show advanced streaming options" on:click={() => (showAdvancedStreaming = !showAdvancedStreaming)}>
                 <Icon id="stage" white />
-                <span>RTMP</span>
+                <span>Advanced</span>
             </MaterialButton>
             <MaterialButton variant={isRecording ? "contained" : "outlined"} title={isRecording ? "Stop recording" : recordConstraints ? `Record ${recordSource?.name || "source"}` : "Select a camera or screen in Preview to record"} disabled={!isRecording && !recordConstraints} red={isRecording} on:click={toggleRecord}>
                 <Icon id={isRecording ? "stop" : "record"} white />
@@ -439,6 +440,19 @@
             </MaterialButton>
         </div>
     </div>
+
+    {#if showAdvancedStreaming}
+        <div class="advanced-streaming">
+            <div>
+                <strong>Direct RTMP streaming</strong>
+                <p>Advanced option. Prefer OBS Studio for normal streaming; direct streaming can use high CPU and memory.</p>
+            </div>
+            <MaterialButton variant="outlined" title="Open direct RTMP streaming" on:click={openRtmpStream}>
+                <Icon id="stage" white />
+                <span>Direct RTMP</span>
+            </MaterialButton>
+        </div>
+    {/if}
 
     <div class="web-url-panel">
         <MaterialTextInput label="VDO.Ninja camera URL" value={webUrl} placeholder="https://vdo.ninja/?view=your-camera" pasteBtn on:input={(e) => (webUrl = e.detail)} on:change={(e) => (webUrl = e.detail)} on:keydown={(e) => e.key === "Enter" && addWebSource()} />
@@ -586,6 +600,35 @@
         white-space: nowrap;
     }
 
+    .advanced-streaming {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+        margin: 0 4px;
+        padding: 10px 12px;
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        border-radius: 6px;
+        background: rgba(245, 158, 11, 0.08);
+        color: var(--text);
+    }
+
+    .advanced-streaming strong {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 0.9em;
+    }
+
+    .advanced-streaming p {
+        margin: 0;
+        font-size: 0.8em;
+        opacity: 0.72;
+    }
+
+    .advanced-streaming :global(button) {
+        white-space: nowrap;
+    }
+
     .web-url-panel {
         display: grid;
         grid-template-columns: minmax(220px, 2fr) minmax(140px, 1fr) auto;
@@ -706,6 +749,10 @@
         }
 
         .web-url-panel {
+            grid-template-columns: 1fr;
+        }
+
+        .advanced-streaming {
             grid-template-columns: 1fr;
         }
     }

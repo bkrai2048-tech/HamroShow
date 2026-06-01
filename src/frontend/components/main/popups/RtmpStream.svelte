@@ -2,7 +2,7 @@
     import { onDestroy, onMount } from "svelte"
     import { MAIN, Main } from "../../../../types/IPC/Main"
     import { receiveMain, requestMain, sendMain } from "../../../IPC/main"
-    import { activePopup, special } from "../../../stores"
+    import { activeDrawerTab, activePopup, special } from "../../../stores"
     import Icon from "../../helpers/Icon.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
 
@@ -397,15 +397,30 @@
         }
         activePopup.set(null)
     }
+
+    function openObs() {
+        activePopup.set(null)
+        activeDrawerTab.set("obs")
+    }
 </script>
 
 <div class="rtmp">
-    <h2 class="title"><Icon id="stage" size={1.4} white /> <span>Stream to RTMP</span></h2>
+    <h2 class="title"><Icon id="stage" size={1.4} white /> <span>Advanced Direct RTMP</span></h2>
+
+    <div class="banner warning advanced-note">
+        <div>
+            <strong>Use OBS Studio for normal streaming.</strong>
+            <p>This built-in direct streamer runs encoding inside HamroShow and can use a lot of CPU and memory.</p>
+        </div>
+        <MaterialButton variant="outlined" on:click={openObs}>
+            <Icon id="stage" white /> <span>OBS Studio</span>
+        </MaterialButton>
+    </div>
 
     {#if ffmpegAvailable === false}
         <div class="banner error">
             <strong>FFmpeg is not installed (or not on PATH).</strong>
-            <p>HamroShow's built-in streamer requires the system FFmpeg binary.</p>
+            <p>HamroShow's advanced direct streamer requires the system FFmpeg binary.</p>
             <ol>
                 <li>Download FFmpeg from <a href="https://ffmpeg.org/download.html" target="_blank" rel="noopener">ffmpeg.org/download.html</a> (on Windows the <em>gyan.dev</em> "release essentials" build is easiest).</li>
                 <li>Extract it and add the <code>bin</code> folder to your <strong>system PATH</strong>.</li>
@@ -437,7 +452,7 @@
                 <Icon id="reset" white /> <span>{loadingSources ? "Loading" : "Refresh"}</span>
             </MaterialButton>
         </div>
-        <p class="hint">For the church display, open the Audience output, click Refresh, then pick "Audience (direct HamroShow output)".</p>
+        <p class="hint">For best performance, use OBS Studio. Use direct HamroShow output only when you specifically need built-in RTMP streaming.</p>
     </div>
 
     <div class="field">
@@ -587,10 +602,26 @@
         background: var(--primary-darker);
         border: 1px solid var(--secondary-opacity);
     }
+    .banner.warning {
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.42);
+    }
     .banner.error {
         background: rgba(229, 57, 53, 0.12);
         border: 1px solid rgba(229, 57, 53, 0.5);
         color: var(--text);
+    }
+    .advanced-note {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 12px;
+    }
+    .advanced-note p {
+        margin: 3px 0 0;
+    }
+    .advanced-note :global(button) {
+        white-space: nowrap;
     }
     .banner ol {
         margin: 8px 0 10px 18px;
@@ -641,5 +672,10 @@
         justify-content: flex-end;
         gap: 8px;
         margin-top: 4px;
+    }
+    @media (max-width: 640px) {
+        .advanced-note {
+            grid-template-columns: 1fr;
+        }
     }
 </style>
