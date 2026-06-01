@@ -160,6 +160,7 @@ export const mainResponses: MainResponses = {
     [Main.STREAM_DATA]: (data) => writeStreamChunk(data),
     [Main.STREAM_STOP]: () => stopStream(),
     [Main.STREAM_STATUS]: () => {},
+    [Main.STREAM_LIST_OUTPUTS]: async () => listOutputCaptureSources(),
     [Main.SYSTEM_OPEN]: (data) => openInSystem(data),
     [Main.LOCATE_MEDIA_FILE]: (data) => locateMediaFile(data),
     [Main.GET_MEDIA_FOLDER_PATH]: () => getMediaSyncFolderPath(),
@@ -405,6 +406,17 @@ function getScreens(type: "window" | "screen" = "screen"): Promise<{ name: strin
         })
 
         return screens
+    }
+}
+
+function listOutputCaptureSources(): Array<{ id: string; name: string; sourceId?: string }> {
+    try {
+        return OutputHelper.getAllOutputs()
+            .filter((o) => o.window)
+            .map((o) => ({ id: o.id, name: o.window.getTitle() || "Output", sourceId: o.window.getMediaSourceId() }))
+    } catch (err) {
+        console.error("listOutputCaptureSources failed:", err)
+        return []
     }
 }
 

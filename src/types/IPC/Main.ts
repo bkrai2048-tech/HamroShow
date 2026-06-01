@@ -169,7 +169,8 @@ export enum Main {
     STREAM_START = "STREAM_START",
     STREAM_DATA = "STREAM_DATA",
     STREAM_STOP = "STREAM_STOP",
-    STREAM_STATUS = "STREAM_STATUS"
+    STREAM_STATUS = "STREAM_STATUS",
+    STREAM_LIST_OUTPUTS = "STREAM_LIST_OUTPUTS"
 }
 
 export interface MainSendPayloads {
@@ -364,6 +365,7 @@ export interface MainReturnPayloads {
     [Main.STREAM_CHECK_FFMPEG]: Promise<{ available: boolean; path?: string; version?: string }>
     [Main.STREAM_START]: Promise<{ started: boolean; error?: string }>
     [Main.STREAM_STATUS]: { state: "starting" | "live" | "stopped" | "error"; message?: string } | void
+    [Main.STREAM_LIST_OUTPUTS]: Promise<Array<{ id: string; name: string; sourceId?: string }>>
 }
 
 ///////////

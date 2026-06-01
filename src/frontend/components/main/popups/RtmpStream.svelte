@@ -100,13 +100,23 @@
         loadingSources = true
 
         try {
-            const [screens, windows] = await Promise.all([requestMain(Main.GET_SCREENS), requestMain(Main.GET_WINDOWS)])
+            const [screens, windows, outputs] = await Promise.all([
+                requestMain(Main.GET_SCREENS),
+                requestMain(Main.GET_WINDOWS),
+                requestMain(Main.STREAM_LIST_OUTPUTS).catch(() => [])
+            ])
             const devices = await navigator.mediaDevices.enumerateDevices().catch(() => [])
             const cameras = devices.filter((device) => device.kind === "videoinput")
 
+            const outputSourceIds = new Set((outputs || []).map((o: any) => o.sourceId).filter(Boolean))
+            const outputEntries = (outputs || [])
+                .filter((o: any) => o.sourceId)
+                .map((o: any) => ({ id: o.sourceId as string, name: `${o.name} (HamroShow output)`, type: "window" as const, section: "HamroShow outputs" }))
+
             captureSources = [
+                ...outputEntries,
                 ...(screens || []).map((source) => ({ id: source.id, name: source.name, type: "screen" as const, section: "Screens" })),
-                ...(windows || []).map((source) => ({ id: source.id, name: source.name, type: "window" as const, section: "Windows" })),
+                ...(windows || []).filter((source) => !outputSourceIds.has(source.id)).map((source) => ({ id: source.id, name: source.name, type: "window" as const, section: "Windows" })),
                 ...cameras.map((source, index) => ({ id: source.deviceId, name: source.label || `Camera ${index + 1}`, type: "camera" as const, section: "Cameras" }))
             ]
 
@@ -220,7 +230,7 @@
         }
 
         try {
-            recorder = new MediaRecorder(mediaStream, { mimeType, videoBitsPerSecond: 3_500_000, audioBitsPerSecond: 128_000 })
+            recorder = new MediaRecorder(mediaStream, { mimeType, videoBitsPerSecond: 6_000_000, audioBitsPerSecond: 160_000 })
         } catch (err: any) {
             statusMsg = `MediaRecorder failed: ${err?.message || err}`
             statusKind = "error"
@@ -251,7 +261,7 @@
             t.onended = () => stopStreaming("Capture source ended.", "info")
         })
 
-        recorder.start(500) // emit chunks every 500ms
+        recorder.start(250) // emit chunks every 250ms for lower latency
 
         streaming = true
         starting = false
@@ -382,7 +392,7 @@
                 <Icon id="reset" white /> <span>{loadingSources ? "Loading" : "Refresh"}</span>
             </MaterialButton>
         </div>
-        <p class="hint">Choose the screen, window, or camera HamroShow should send to Facebook.</p>
+        <p class="hint">Choose the screen, window, or camera HamroShow should send to Facebook. To broadcast the Audience display, open it as a window (top-right output toggle) and pick "Audience (HamroShow output)".</p>
     </div>
 
     <div class="field">
