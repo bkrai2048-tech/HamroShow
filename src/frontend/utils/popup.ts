@@ -61,6 +61,7 @@ import RegexManager from "../components/main/popups/RegexManager.svelte"
 import Rename from "../components/main/popups/Rename.svelte"
 import ResetAll from "../components/main/popups/ResetAll.svelte"
 import Restore from "../components/main/popups/Restore.svelte"
+import RtmpStream from "../components/main/popups/RtmpStream.svelte"
 import SelectShow from "../components/main/popups/SelectShow.svelte"
 import SelectStageLayout from "../components/main/popups/SelectStageLayout.svelte"
 import SelectStyle from "../components/main/popups/SelectStyle.svelte"
@@ -159,7 +160,8 @@ export const popups: { [key in Popups]: ComponentType } = {
     timeline: TimelineSettings,
     timecode: Timecode,
     drawer_search_options: DrawerSearchOptions,
-    template_info: TemplateInfo
+    template_info: TemplateInfo,
+    rtmp_stream: RtmpStream
 }
 
 export function waitForPopupData(popupId: Popups): Promise<any> {

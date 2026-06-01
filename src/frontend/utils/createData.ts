@@ -204,7 +204,7 @@ function getDefaultOverlays() {
             {
                 style: "top:870px;left:1248px;height:170px;width:630px;",
                 align: "align-items:flex-end;",
-                lines: [{ align: "text-align: right;", text: [{ value: "FreeShow", style: "font-size:50px;font-weight:bold;color:#F0008C;" }] }]
+                lines: [{ align: "text-align: right;", text: [{ value: "HamroShow", style: "font-size:50px;font-weight:bold;color:#F0008C;" }] }]
             }
         ]
     }

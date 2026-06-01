@@ -58,7 +58,7 @@ export class IcecastSender {
             headers: {
                 Authorization: `Basic ${auth}`,
                 "Content-Type": "audio/ogg; codecs=opus",
-                "Ice-Name": "FreeShow Audio Stream",
+                "Ice-Name": "HamroShow Audio Stream",
                 "Ice-Public": "0",
                 "Transfer-Encoding": "chunked"
             }

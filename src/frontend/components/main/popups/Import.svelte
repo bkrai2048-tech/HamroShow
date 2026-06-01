@@ -149,7 +149,7 @@
                 <p>{translateText(format.name)}</p>
 
                 <div class="freeshow">
-                    <img style="height: 18px;padding: 0;" src="./import-logos/freeshow.webp" alt="FreeShow-logo" draggable={false} />
+                    <img style="height: 18px;padding: 0;" src="./import-logos/freeshow.webp" alt="HamroShow-logo" draggable={false} />
                 </div>
             </MaterialButton>
         {/each}
@@ -249,7 +249,7 @@
                 <p>{translateText(format.name)}</p>
 
                 <div class="freeshow">
-                    <img style="height: 18px;padding: 0;" src="./import-logos/freeshow.webp" alt="FreeShow-logo" draggable={false} />
+                    <img style="height: 18px;padding: 0;" src="./import-logos/freeshow.webp" alt="HamroShow-logo" draggable={false} />
                 </div>
             </MaterialButton>
         {/each}

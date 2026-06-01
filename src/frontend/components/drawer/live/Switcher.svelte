@@ -5,7 +5,7 @@
     import { Main } from "../../../../types/IPC/Main"
     import { requestMain } from "../../../IPC/main"
     import { type CameraData, cameraManager } from "../../../media/cameraManager"
-    import { activeDrawerTab, activeRecording, outLocked, outputs, playerVideos, special } from "../../../stores"
+    import { activeDrawerTab, activePopup, activeRecording, outLocked, outputs, playerVideos, special } from "../../../stores"
     import { destroy, receive, send } from "../../../utils/request"
     import Icon from "../../helpers/Icon.svelte"
     import { getFirstActiveOutput, setOutput } from "../../helpers/output"
@@ -259,6 +259,10 @@
         activeDrawerTab.set("obs")
     }
 
+    function openRtmpStream() {
+        activePopup.set("rtmp_stream")
+    }
+
     function matchesSearch(source: SwitcherSource) {
         const search = normalize(searchValue)
         if (!search) return true
@@ -415,7 +419,11 @@
             </MaterialButton>
             <MaterialButton variant="outlined" title="Stream via OBS Studio" on:click={openObsTab}>
                 <Icon id="stage" white />
-                <span>Stream</span>
+                <span>OBS</span>
+            </MaterialButton>
+            <MaterialButton variant="outlined" title="Stream directly to YouTube / Facebook / Twitch / custom RTMP" on:click={openRtmpStream}>
+                <Icon id="stage" white />
+                <span>RTMP</span>
             </MaterialButton>
             <MaterialButton variant={isRecording ? "contained" : "outlined"} title={isRecording ? "Stop recording" : recordConstraints ? `Record ${recordSource?.name || "source"}` : "Select a camera or screen in Preview to record"} disabled={!isRecording && !recordConstraints} red={isRecording} on:click={toggleRecord}>
                 <Icon id={isRecording ? "stop" : "record"} white />

@@ -9,7 +9,7 @@ import { convertOSISBible } from "./osisBible"
 import { convertZefaniaBible } from "./zefaniaBible"
 
 const bibleTypes = {
-    freeshow: { name: "FreeShow", func: importFSB },
+    freeshow: { name: "HamroShow", func: importFSB },
     bookjson: { name: "Book JSON", func: importBookJsonBible },
     zefania: { name: "Zefania", func: convertZefaniaBible },
     osis: { name: "OSIS", func: convertOSISBible },

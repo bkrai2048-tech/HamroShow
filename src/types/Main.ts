@@ -399,6 +399,7 @@ export type Popups =
     | "timecode"
     | "drawer_search_options"
     | "template_info"
+    | "rtmp_stream"
 
 export type DefaultProjectNames = "date" | "today" | "sunday" | "week" | "custom" | "blank"
 

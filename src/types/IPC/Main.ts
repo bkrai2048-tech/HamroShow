@@ -163,7 +163,13 @@ export enum Main {
     TIMECODE_STATUS = "TIMECODE_STATUS",
     // Spotify
     SPOTIFY_GET_STATE = "SPOTIFY_GET_STATE",
-    SPOTIFY_COMMAND = "SPOTIFY_COMMAND"
+    SPOTIFY_COMMAND = "SPOTIFY_COMMAND",
+    // RTMP Stream
+    STREAM_CHECK_FFMPEG = "STREAM_CHECK_FFMPEG",
+    STREAM_START = "STREAM_START",
+    STREAM_DATA = "STREAM_DATA",
+    STREAM_STOP = "STREAM_STOP",
+    STREAM_STATUS = "STREAM_STATUS"
 }
 
 export interface MainSendPayloads {
@@ -257,6 +263,10 @@ export interface MainSendPayloads {
     // Spotify
     [Main.SPOTIFY_GET_STATE]: undefined
     [Main.SPOTIFY_COMMAND]: { command: "playpause" | "next" | "prev" | "seek" | "setVolume" | "pause"; value?: number }
+    // RTMP Stream
+    [Main.STREAM_START]: { rtmpUrl: string; mimeType: string }
+    [Main.STREAM_DATA]: ArrayBuffer
+    [Main.STREAM_STOP]: undefined
 }
 
 export interface MainReturnPayloads {
@@ -350,6 +360,10 @@ export interface MainReturnPayloads {
     // Spotify
     [Main.SPOTIFY_GET_STATE]: Promise<SpotifyState | null>
     [Main.SPOTIFY_COMMAND]: Promise<boolean>
+    // RTMP Stream
+    [Main.STREAM_CHECK_FFMPEG]: Promise<{ available: boolean; path?: string; version?: string }>
+    [Main.STREAM_START]: Promise<{ started: boolean; error?: string }>
+    [Main.STREAM_STATUS]: { state: "starting" | "live" | "stopped" | "error"; message?: string } | void
 }
 
 ///////////

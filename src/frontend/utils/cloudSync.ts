@@ -28,7 +28,7 @@ export async function setupCloudSync(auto: boolean = false) {
         return
     }
 
-    if (auto && !(await confirmCustom("You can sync your data with FreeShow Cloud! Do you want to enable cloud sync now?"))) return
+    if (auto && !(await confirmCustom("You can sync your data with ChurchApps Cloud! Do you want to enable cloud sync now?"))) return
 
     if (teams.length === 1) {
         chooseTeam({ id: teams[0].id, churchId: teams[0].churchId, name: teams[0].name, count: 1 })
